@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Telegrom V1.3 Voice</title>
+<title>Telegrom V1.6 Reactions</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -151,13 +151,46 @@ button.mini{margin:0 0 0 6px;padding:5px 8px;font-size:11px;border-radius:8px;ba
   margin-top:4px;
 }
 
+
+.reactions{
+  margin-top:8px;
+  display:flex;
+  gap:6px;
+  flex-wrap:wrap;
+}
+.reaction-btn{
+  margin:0;
+  padding:4px 7px;
+  border-radius:999px;
+  background:#334155;
+  color:white;
+  font-size:13px;
+}
+.reaction-btn.active{
+  background:var(--button);
+  color:var(--button-text);
+}
+.reaction-counts{
+  margin-top:7px;
+  display:flex;
+  gap:6px;
+  flex-wrap:wrap;
+}
+.reaction-pill{
+  background:rgba(255,255,255,.14);
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:999px;
+  padding:3px 8px;
+  font-size:13px;
+}
+
 </style>
 </head>
 
 <body>
 <div class="app">
   <div class="header">
-    <div>💬 Telegrom <span class="small">V1.3 VOICE</span></div>
+    <div>💬 Telegrom <span class="small">V1.6 REACTIONS</span></div>
     <div>
       <span class="small" id="currentUserText"></span>
       <button class="secondary" id="profileBtn" style="display:none" onclick="openProfile()">Профиль</button>
@@ -1094,6 +1127,13 @@ function addMessageToChat(item){
   div.innerHTML = `
     <div class="name">${escapeHtml(item.from_user)}</div>
     ${body}
+    <div class="reaction-counts" id="reactionCounts_${item.id}"></div>
+    <div class="reactions">
+      <button class="reaction-btn" id="react_${item.id}_heart" onclick="reactMessage(${item.id}, '❤️')">❤️</button>
+      <button class="reaction-btn" id="react_${item.id}_like" onclick="reactMessage(${item.id}, '👍')">👍</button>
+      <button class="reaction-btn" id="react_${item.id}_fire" onclick="reactMessage(${item.id}, '🔥')">🔥</button>
+      <button class="reaction-btn" id="react_${item.id}_laugh" onclick="reactMessage(${item.id}, '😂')">😂</button>
+    </div>
     <div class="time">
       <span>${new Date(item.created_at).toLocaleString()}</span>
       ${actions}
@@ -1101,6 +1141,7 @@ function addMessageToChat(item){
   `;
 
   chat.appendChild(div);
+  loadMessageReactions(item.id);
 }
 
 function renderMessageBody(message){
@@ -1293,6 +1334,115 @@ async function saveProfile(){
     await loadPrivateMessages();
   }
 }
+
+
+async function reactMessage(messageId, reaction){
+  if(!username) return;
+
+  const { data, error } = await db
+    .from("telegrom_reactions")
+    .select("*")
+    .eq("message_id", messageId)
+    .eq("username", username)
+    .limit(1);
+
+  if(error){
+    alert("Ошибка реакции: " + error.message);
+    console.error(error);
+    return;
+  }
+
+  if(data && data.length > 0){
+    if(data[0].reaction === reaction){
+      const { error: deleteError } = await db
+        .from("telegrom_reactions")
+        .delete()
+        .eq("id", data[0].id);
+
+      if(deleteError){
+        alert("Ошибка удаления реакции: " + deleteError.message);
+        console.error(deleteError);
+        return;
+      }
+    }else{
+      const { error: updateError } = await db
+        .from("telegrom_reactions")
+        .update({ reaction: reaction })
+        .eq("id", data[0].id);
+
+      if(updateError){
+        alert("Ошибка обновления реакции: " + updateError.message);
+        console.error(updateError);
+        return;
+      }
+    }
+  }else{
+    const { error: insertError } = await db
+      .from("telegrom_reactions")
+      .insert([{ message_id: messageId, username: username, reaction: reaction }]);
+
+    if(insertError){
+      alert("Ошибка добавления реакции: " + insertError.message);
+      console.error(insertError);
+      return;
+    }
+  }
+
+  await loadMessageReactions(messageId);
+}
+
+async function loadMessageReactions(messageId){
+  const box = document.getElementById("reactionCounts_" + messageId);
+  if(!box) return;
+
+  const { data, error } = await db
+    .from("telegrom_reactions")
+    .select("*")
+    .eq("message_id", messageId);
+
+  if(error){
+    console.error("Ошибка загрузки реакций:", error);
+    return;
+  }
+
+  const counts = {};
+  let myReaction = null;
+
+  (data || []).forEach(item => {
+    counts[item.reaction] = (counts[item.reaction] || 0) + 1;
+
+    if(item.username === username){
+      myReaction = item.reaction;
+    }
+  });
+
+  box.innerHTML = "";
+
+  Object.keys(counts).forEach(emoji => {
+    const pill = document.createElement("span");
+    pill.className = "reaction-pill";
+    pill.textContent = emoji + " " + counts[emoji];
+    box.appendChild(pill);
+  });
+
+  const map = {
+    "❤️": "heart",
+    "👍": "like",
+    "🔥": "fire",
+    "😂": "laugh"
+  };
+
+  ["heart","like","fire","laugh"].forEach(key => {
+    const btn = document.getElementById("react_" + messageId + "_" + key);
+    if(btn) btn.classList.remove("active");
+  });
+
+  if(myReaction && map[myReaction]){
+    const activeBtn = document.getElementById("react_" + messageId + "_" + map[myReaction]);
+    if(activeBtn) activeBtn.classList.add("active");
+  }
+}
+
 
 function handleEnter(event){
   if(event.key === "Enter") sendPrivateMessage();
