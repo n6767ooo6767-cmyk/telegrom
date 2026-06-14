@@ -122,6 +122,7 @@ const db = window.supabase.createClient(
 );
 
 let username = localStorage.getItem("telegrom_username");
+let refreshTimer = null;
 
 if(username){
   startChat();
@@ -147,7 +148,10 @@ function startChat(){
   document.getElementById("sendBox").style.display = "flex";
 
   loadMessages();
-  subscribeMessages();
+
+  if(!refreshTimer){
+    refreshTimer = setInterval(loadMessages, 2000);
+  }
 }
 
 async function sendMessage(){
@@ -167,6 +171,7 @@ async function sendMessage(){
   }
 
   input.value = "";
+  loadMessages();
 }
 
 async function loadMessages(){
@@ -205,23 +210,6 @@ function addMessageToChat(item){
   `;
 
   chat.appendChild(div);
-  chat.scrollTop = chat.scrollHeight;
-}
-
-function subscribeMessages(){
-  db.channel("telegrom-chat")
-    .on(
-      "postgres_changes",
-      {
-        event: "INSERT",
-        schema: "public",
-        table: "telegrom_messages"
-      },
-      payload => {
-        addMessageToChat(payload.new);
-      }
-    )
-    .subscribe();
 }
 
 function handleEnter(event){
