@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Telegrom V1.6 Reactions</title>
+<title>Telegrom</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -184,13 +184,38 @@ button.mini{margin:0 0 0 6px;padding:5px 8px;font-size:11px;border-radius:8px;ba
   font-size:13px;
 }
 
+
+.file-btn{
+  background:#334155;
+  color:white;
+  min-width:52px;
+}
+.file-card{
+  margin-top:7px;
+  padding:10px;
+  border-radius:12px;
+  background:rgba(255,255,255,.12);
+  display:inline-block;
+  max-width:280px;
+}
+.file-card a{
+  color:var(--accent);
+  text-decoration:none;
+  font-weight:bold;
+}
+.file-meta{
+  color:var(--muted);
+  font-size:12px;
+  margin-top:4px;
+}
+
 </style>
 </head>
 
 <body>
 <div class="app">
   <div class="header">
-    <div>💬 Telegrom <span class="small">V1.6 REACTIONS</span></div>
+    <div>💬 Telegrom <span class="small">V1.7 FILES</span></div>
     <div>
       <span class="small" id="currentUserText"></span>
       <button class="secondary" id="profileBtn" style="display:none" onclick="openProfile()">Профиль</button>
@@ -226,7 +251,9 @@ button.mini{margin:0 0 0 6px;padding:5px 8px;font-size:11px;border-radius:8px;ba
       </div>
 
       <div class="send" id="sendBox" style="display:none;">
+        <input type="file" id="fileInput" style="display:none" onchange="sendFileMessage(event)">
         <input type="file" id="photoInput" accept="image/*" style="display:none" onchange="sendPhotoMessage(event)">
+        <button class="file-btn" onclick="document.getElementById('fileInput').click()">📎</button>
         <button class="photo-btn" onclick="document.getElementById('photoInput').click()">📷</button>
         <button class="voice-btn" id="voiceBtn" onclick="toggleVoiceRecording()">🎤</button>
         <input id="messageInput" placeholder="Сообщение..." onkeydown="handleEnter(event)">
@@ -880,6 +907,85 @@ async function checkTyping(){
 }
 
 
+
+function formatFileSize(bytes){
+  if(!bytes && bytes !== 0) return "";
+  if(bytes < 1024) return bytes + " B";
+  if(bytes < 1024 * 1024) return Math.round(bytes / 1024) + " KB";
+  return (bytes / 1024 / 1024).toFixed(1) + " MB";
+}
+
+async function sendFileMessage(event){
+  const file = event.target.files && event.target.files[0];
+
+  if(!friend){
+    alert("Сначала выбери пользователя");
+    event.target.value = "";
+    return;
+  }
+
+  if(!file){
+    return;
+  }
+
+  const maxSize = 50 * 1024 * 1024;
+
+  if(file.size > maxSize){
+    alert("Файл слишком большой. Максимум 50 MB.");
+    event.target.value = "";
+    return;
+  }
+
+  const safeOriginalName = file.name.replaceAll("|", "_");
+  const safeName = Date.now() + "_" + Math.random().toString(36).slice(2) + "_" + safeOriginalName;
+  const path = username + "/" + safeName;
+
+  const { error: uploadError } = await db.storage
+    .from("chat-files")
+    .upload(path, file, {
+      cacheControl:"3600",
+      upsert:false,
+      contentType:file.type || "application/octet-stream"
+    });
+
+  if(uploadError){
+    alert("Ошибка загрузки файла: " + uploadError.message);
+    console.error(uploadError);
+    event.target.value = "";
+    return;
+  }
+
+  const { data } = db.storage
+    .from("chat-files")
+    .getPublicUrl(path);
+
+  const publicUrl = data.publicUrl;
+  const size = formatFileSize(file.size);
+
+  const { error } = await db
+    .from("telegrom_private_messages")
+    .insert([{
+      from_user:username,
+      to_user:friend,
+      messages:"[file]" + publicUrl + "|" + safeOriginalName + "|" + size,
+      unread:true,
+      is_read:false
+    }]);
+
+  if(error){
+    alert("Ошибка отправки файла: " + error.message);
+    console.error(error);
+    event.target.value = "";
+    return;
+  }
+
+  event.target.value = "";
+
+  await loadPrivateMessages();
+  await loadUsers();
+}
+
+
 async function sendPhotoMessage(event){
   const file = event.target.files && event.target.files[0];
 
@@ -1162,6 +1268,21 @@ function renderMessageBody(message){
     return `
       <div class="text">🎤 Голосовое сообщение</div>
       <audio class="voice-message" controls src="${escapeHtml(url)}"></audio>
+    `;
+  }
+
+  if(text.startsWith("[file]")){
+    const raw = text.replace("[file]", "").trim();
+    const parts = raw.split("|");
+    const url = parts[0] || "";
+    const name = parts[1] || "file";
+    const size = parts[2] || "";
+
+    return `
+      <div class="file-card">
+        <div>📎 <a href="${escapeHtml(url)}" target="_blank" download>${escapeHtml(name)}</a></div>
+        <div class="file-meta">${escapeHtml(size)}</div>
+      </div>
     `;
   }
 
