@@ -209,13 +209,34 @@ button.mini{margin:0 0 0 6px;padding:5px 8px;font-size:11px;border-radius:8px;ba
   margin-top:4px;
 }
 
+
+.emoji-btn{background:#334155;color:white;min-width:52px}
+.emoji-panel{
+ position:absolute;
+ bottom:70px;
+ left:20px;
+ background:#151b33;
+ border:1px solid #25304d;
+ border-radius:12px;
+ padding:10px;
+ display:none;
+ max-width:260px;
+ z-index:999;
+}
+.emoji-item{
+ cursor:pointer;
+ font-size:24px;
+ padding:4px;
+ display:inline-block;
+}
+
 </style>
 </head>
 
 <body>
 <div class="app">
   <div class="header">
-    <div>💬 Telegrom <span class="small">V1.7 FILES</span></div>
+    <div>💬 Telegrom <span class="small">V1.8 EMOJI</span></div>
     <div>
       <span class="small" id="currentUserText"></span>
       <button class="secondary" id="profileBtn" style="display:none" onclick="openProfile()">Профиль</button>
@@ -255,7 +276,7 @@ button.mini{margin:0 0 0 6px;padding:5px 8px;font-size:11px;border-radius:8px;ba
         <input type="file" id="photoInput" accept="image/*" style="display:none" onchange="sendPhotoMessage(event)">
         <button class="file-btn" onclick="document.getElementById('fileInput').click()">📎</button>
         <button class="photo-btn" onclick="document.getElementById('photoInput').click()">📷</button>
-        <button class="voice-btn" id="voiceBtn" onclick="toggleVoiceRecording()">🎤</button>
+        <button class="voice-btn" id="voiceBtn" onclick="toggleVoiceRecording()">🎤</button><button class="emoji-btn" onclick="toggleEmojiPanel()">😊</button>
         <input id="messageInput" placeholder="Сообщение..." onkeydown="handleEnter(event)">
         <button onclick="sendPrivateMessage()">Send</button>
       </div>
@@ -1584,6 +1605,32 @@ function escapeAttr(text){
     .replaceAll("'","&#039;")
     .replaceAll('"',"&quot;")
     .replaceAll("\\n"," ");
+}
+</script>
+
+<div class="emoji-panel" id="emojiPanel">
+<span class="emoji-item" onclick="addEmoji('😀')">😀</span>
+<span class="emoji-item" onclick="addEmoji('😂')">😂</span>
+<span class="emoji-item" onclick="addEmoji('😍')">😍</span>
+<span class="emoji-item" onclick="addEmoji('🥳')">🥳</span>
+<span class="emoji-item" onclick="addEmoji('❤️')">❤️</span>
+<span class="emoji-item" onclick="addEmoji('👍')">👍</span>
+<span class="emoji-item" onclick="addEmoji('🔥')">🔥</span>
+<span class="emoji-item" onclick="addEmoji('🚀')">🚀</span>
+<span class="emoji-item" onclick="addEmoji('⭐')">⭐</span>
+<span class="emoji-item" onclick="addEmoji('🐱')">🐱</span>
+<span class="emoji-item" onclick="addEmoji('🍕')">🍕</span>
+</div>
+
+<script>
+function toggleEmojiPanel(){
+ const p=document.getElementById('emojiPanel');
+ p.style.display=p.style.display==='block'?'none':'block';
+}
+function addEmoji(e){
+ const i=document.getElementById('messageInput');
+ i.value += e;
+ i.focus();
 }
 </script>
 </body>
