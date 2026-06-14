@@ -3,10 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Telegrom v0.6</title>
-
+<title>Telegrom v0.7</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
 <style>
 body{margin:0;font-family:Arial,sans-serif;background:#0b1020;color:white;}
 .app{max-width:1000px;margin:auto;height:100vh;display:flex;flex-direction:column;}
@@ -27,6 +25,7 @@ button.secondary{background:#334155;color:white;}
 .unread{background:#ef4444;color:white;border-radius:999px;padding:2px 7px;font-size:12px;font-weight:bold;min-width:14px;text-align:center;}
 .status{font-size:13px;}
 .chat-title{padding:15px 20px;background:#111827;}
+.typing{color:#8aa3c7;font-size:14px;height:18px;margin-top:4px;}
 .chat{flex:1;overflow-y:auto;padding:20px;}
 .empty{color:#9ca3af;padding:20px;}
 .msg{background:#1d2747;padding:12px;border-radius:14px;margin-bottom:10px;max-width:75%;}
@@ -37,13 +36,9 @@ button.secondary{background:#334155;color:white;}
 .send{display:flex;gap:10px;padding:15px;background:#151b33;}
 .send input{margin:0;}
 .send button{margin:0;}
-@media(max-width:700px){
-  .main{flex-direction:column;}
-  .sidebar{width:100%;max-height:220px;border-right:0;border-bottom:1px solid #25304d;}
-}
+@media(max-width:700px){.main{flex-direction:column;}.sidebar{width:100%;max-height:220px;border-right:0;border-bottom:1px solid #25304d;}}
 </style>
 </head>
-
 <body>
 <div class="app">
   <div class="header">
@@ -65,10 +60,11 @@ button.secondary{background:#334155;color:white;}
     </div>
 
     <div class="content">
-      <div class="chat-title" id="chatTitle">Выбери пользователя слева</div>
-      <div class="chat" id="chat">
-        <div class="empty">Личная переписка появится здесь.</div>
+      <div class="chat-title">
+        <div id="chatTitle">Выбери пользователя слева</div>
+        <div id="typingStatus" class="typing"></div>
       </div>
+      <div class="chat" id="chat"><div class="empty">Личная переписка появится здесь.</div></div>
       <div class="send" id="sendBox" style="display:none;">
         <input id="messageInput" placeholder="Сообщение..." onkeydown="handleEnter(event)">
         <button onclick="sendPrivateMessage()">Send</button>
@@ -89,10 +85,14 @@ let friend = localStorage.getItem("telegrom_friend");
 let usersTimer = null;
 let messagesTimer = null;
 let onlineTimer = null;
+let typingCooldown = false;
 
-if(username){
-  startApp();
-}
+if(username){ startApp(); }
+
+document.addEventListener("DOMContentLoaded", () => {
+  const messageInput = document.getElementById("messageInput");
+  if(messageInput){ messageInput.addEventListener("input", updateTyping); }
+});
 
 async function saveUsername(){
   const input = document.getElementById("usernameInput");
@@ -119,7 +119,6 @@ function isGoodUsername(name){
 
 async function saveOrUpdateUser(){
   if(!username) return;
-
   const now = new Date().toISOString();
 
   const { data, error } = await db
@@ -127,22 +126,14 @@ async function saveOrUpdateUser(){
     .select("*")
     .eq("username", username);
 
-  if(error){
-    console.error(error);
-    return;
-  }
+  if(error){ console.error(error); return; }
 
   if(!data || data.length === 0){
-    await db
-      .from("telegrom_users")
-      .insert([{ username: username, last_seen: now }]);
+    await db.from("telegrom_users").insert([{ username: username, last_seen: now }]);
     return;
   }
 
-  await db
-    .from("telegrom_users")
-    .update({ last_seen: now })
-    .eq("username", username);
+  await db.from("telegrom_users").update({ last_seen: now }).eq("username", username);
 }
 
 async function startApp(){
@@ -153,17 +144,10 @@ async function startApp(){
   await saveOrUpdateUser();
   await loadUsers();
 
-  if(!usersTimer){
-    usersTimer = setInterval(loadUsers, 4000);
-  }
+  if(!usersTimer){ usersTimer = setInterval(loadUsers, 4000); }
+  if(!onlineTimer){ onlineTimer = setInterval(saveOrUpdateUser, 10000); }
 
-  if(!onlineTimer){
-    onlineTimer = setInterval(saveOrUpdateUser, 10000);
-  }
-
-  if(friend){
-    openChat(friend);
-  }
+  if(friend){ openChat(friend); }
 }
 
 async function getUnreadCounts(){
@@ -175,20 +159,13 @@ async function getUnreadCounts(){
     .eq("to_user", username)
     .eq("unread", true);
 
-  if(error){
-    console.error(error);
-    return {};
-  }
+  if(error){ console.error(error); return {}; }
 
   const counts = {};
-
   (data || []).forEach(msg => {
-    if(!counts[msg.from_user]){
-      counts[msg.from_user] = 0;
-    }
+    if(!counts[msg.from_user]) counts[msg.from_user] = 0;
     counts[msg.from_user]++;
   });
-
   return counts;
 }
 
@@ -200,11 +177,7 @@ async function loadUsers(){
     .select("*")
     .order("username", { ascending: true });
 
-  if(error){
-    console.error(error);
-    return;
-  }
-
+  if(error){ console.error(error); return; }
   renderUsers(data || [], unread);
 }
 
@@ -212,9 +185,7 @@ function renderUsers(users, unread = {}){
   const list = document.getElementById("usersList");
   list.innerHTML = "";
 
-  const filtered = users.filter(user => {
-    return user.username && user.username !== username && isGoodUsername(user.username);
-  });
+  const filtered = users.filter(user => user.username && user.username !== username && isGoodUsername(user.username));
 
   if(filtered.length === 0){
     list.innerHTML = '<div class="small">Пока других пользователей нет.</div>';
@@ -224,10 +195,7 @@ function renderUsers(users, unread = {}){
   filtered.forEach(user => {
     const div = document.createElement("div");
     div.className = "user";
-
-    if(user.username === friend){
-      div.classList.add("active");
-    }
+    if(user.username === friend) div.classList.add("active");
 
     const left = document.createElement("span");
     left.className = "user-left";
@@ -237,7 +205,6 @@ function renderUsers(users, unread = {}){
     right.className = "user-right";
 
     const count = unread[user.username] || 0;
-
     if(count > 0){
       const badge = document.createElement("span");
       badge.className = "unread";
@@ -252,7 +219,6 @@ function renderUsers(users, unread = {}){
 
     div.appendChild(left);
     div.appendChild(right);
-
     div.onclick = () => openChat(user.username);
     list.appendChild(div);
   });
@@ -268,24 +234,23 @@ async function openChat(selectedUser){
   friend = selectedUser;
   localStorage.setItem("telegrom_friend", friend);
 
-  document.getElementById("chatTitle").textContent =
-    "Личный чат: " + username + " ↔ " + friend;
-
+  document.getElementById("chatTitle").textContent = "Личный чат: " + username + " ↔ " + friend;
+  document.getElementById("typingStatus").textContent = "";
   document.getElementById("sendBox").style.display = "flex";
 
   await markMessagesAsRead();
   await loadUsers();
   await loadPrivateMessages();
+  await checkTyping();
 
-  if(messagesTimer){
-    clearInterval(messagesTimer);
-  }
+  if(messagesTimer){ clearInterval(messagesTimer); }
 
   messagesTimer = setInterval(async () => {
     await markMessagesAsRead();
     await loadUsers();
     await loadPrivateMessages();
-  }, 3000);
+    await checkTyping();
+  }, 2000);
 }
 
 async function markMessagesAsRead(){
@@ -293,39 +258,88 @@ async function markMessagesAsRead(){
 
   const { error } = await db
     .from("telegrom_private_messages")
-    .update({
-      unread: false
-    })
+    .update({ unread: false })
     .eq("from_user", friend)
-    .eq("to_user", username);
+    .eq("to_user", username)
+    .eq("unread", true);
 
-  if(error){
-    console.error("Ошибка markMessagesAsRead:", error);
+  if(error){ console.error(error); }
+}
+
+async function updateTyping(){
+  if(!username || !friend) return;
+  if(typingCooldown) return;
+
+  typingCooldown = true;
+  setTimeout(() => { typingCooldown = false; }, 1200);
+
+  const now = new Date().toISOString();
+
+  const { data, error } = await db
+    .from("telegrom_typing")
+    .select("*")
+    .eq("from_user", username)
+    .eq("to_user", friend);
+
+  if(error){ console.error(error); return; }
+
+  if(!data || data.length === 0){
+    const { error: insertError } = await db
+      .from("telegrom_typing")
+      .insert([{ from_user: username, to_user: friend, last_typing: now }]);
+
+    if(insertError){ console.error(insertError); }
+    return;
+  }
+
+  const { error: updateError } = await db
+    .from("telegrom_typing")
+    .update({ last_typing: now })
+    .eq("from_user", username)
+    .eq("to_user", friend);
+
+  if(updateError){ console.error(updateError); }
+}
+
+async function checkTyping(){
+  if(!username || !friend) return;
+
+  const el = document.getElementById("typingStatus");
+
+  const { data, error } = await db
+    .from("telegrom_typing")
+    .select("*")
+    .eq("from_user", friend)
+    .eq("to_user", username)
+    .order("last_typing", { ascending: false })
+    .limit(1);
+
+  if(error){ console.error(error); el.textContent = ""; return; }
+
+  if(!data || data.length === 0){
+    el.textContent = "";
+    return;
+  }
+
+  const diff = Date.now() - new Date(data[0].last_typing).getTime();
+
+  if(diff < 5000){
+    el.textContent = friend + " печатает...";
+  }else{
+    el.textContent = "";
   }
 }
-  
+
 async function sendPrivateMessage(){
   const input = document.getElementById("messageInput");
   const text = input.value.trim();
 
-  if(!friend){
-    alert("Сначала выбери пользователя");
-    return;
-  }
-
+  if(!friend){ alert("Сначала выбери пользователя"); return; }
   if(!text) return;
 
   const { error } = await db
     .from("telegrom_private_messages")
-    .insert([
-      {
-        from_user: username,
-        to_user: friend,
-        messages: text,
-        unread: true,
-        is_read: false
-      }
-    ]);
+    .insert([{ from_user: username, to_user: friend, messages: text, unread: true, is_read: false }]);
 
   if(error){
     alert("Ошибка: " + error.message);
@@ -344,15 +358,10 @@ async function loadPrivateMessages(){
   const { data, error } = await db
     .from("telegrom_private_messages")
     .select("*")
-    .or(
-      `and(from_user.eq.${username},to_user.eq.${friend}),and(from_user.eq.${friend},to_user.eq.${username})`
-    )
+    .or(`and(from_user.eq.${username},to_user.eq.${friend}),and(from_user.eq.${friend},to_user.eq.${username})`)
     .order("created_at", { ascending: true });
 
-  if(error){
-    console.error(error);
-    return;
-  }
+  if(error){ console.error(error); return; }
 
   renderMessages(data || []);
 }
@@ -375,9 +384,7 @@ function addMessageToChat(item){
   const div = document.createElement("div");
   div.className = "msg";
 
-  if(item.from_user === username){
-    div.classList.add("me");
-  }
+  if(item.from_user === username){ div.classList.add("me"); }
 
   div.innerHTML = `
     <div class="name">${escapeHtml(item.from_user)}</div>
@@ -395,9 +402,7 @@ function changeUsername(){
 }
 
 function handleEnter(event){
-  if(event.key === "Enter"){
-    sendPrivateMessage();
-  }
+  if(event.key === "Enter"){ sendPrivateMessage(); }
 }
 
 function escapeHtml(text){
@@ -409,6 +414,5 @@ function escapeHtml(text){
     .replaceAll("'","&#039;");
 }
 </script>
-
 </body>
 </html>
