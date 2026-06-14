@@ -294,8 +294,7 @@ async function markMessagesAsRead(){
   const { error } = await db
     .from("telegrom_private_messages")
     .update({
-      unread: false,
-      is_read: true
+      unread: false
     })
     .eq("from_user", friend)
     .eq("to_user", username);
