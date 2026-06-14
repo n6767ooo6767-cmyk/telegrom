@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Telegrom V1.0 FINAL</title>
+<title>Telegrom V1.1 Profile</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -52,15 +52,64 @@ button.mini{margin:0 0 0 6px;padding:5px 8px;font-size:11px;border-radius:8px;ba
   .main{flex-direction:column}
   .sidebar{width:100%;max-height:260px;border-right:0;border-bottom:1px solid #25304d}
 }
+
+.profile-backdrop{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.65);
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:20px;
+  z-index:1000;
+}
+.profile-modal{
+  width:100%;
+  max-width:460px;
+  background:#151b33;
+  border:1px solid #25304d;
+  border-radius:20px;
+  padding:22px;
+  box-shadow:0 20px 80px rgba(0,0,0,.45);
+}
+.profile-modal h2{margin:0 0 12px}
+.profile-row{margin-top:12px}
+.profile-row label{display:block;font-size:13px;color:#9ca3af;margin-bottom:4px}
+.profile-preview{
+  margin-top:14px;
+  display:flex;
+  gap:12px;
+  align-items:center;
+  padding:12px;
+  background:#111827;
+  border-radius:14px;
+}
+.profile-preview .avatar{width:54px;height:54px;flex:0 0 54px}
+.avatar img{
+  width:100%;
+  height:100%;
+  border-radius:50%;
+  object-fit:cover;
+}
+.bio-line{
+  color:#9ca3af;
+  font-size:12px;
+  margin-top:3px;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
 </style>
 </head>
 
 <body>
 <div class="app">
   <div class="header">
-    <div>💬 Telegrom <span class="small">V1.0 FINAL</span></div>
+    <div>💬 Telegrom <span class="small">V1.1 PROFILE</span></div>
     <div>
       <span class="small" id="currentUserText"></span>
+      <button class="secondary" id="profileBtn" style="display:none" onclick="openProfile()">Профиль</button>
       <button class="secondary" id="logoutBtn" style="display:none" onclick="logout()">Выйти</button>
     </div>
   </div>
@@ -99,6 +148,40 @@ button.mini{margin:0 0 0 6px;padding:5px 8px;font-size:11px;border-radius:8px;ba
     </div>
   </div>
 </div>
+
+
+<div class="profile-backdrop" id="profileBackdrop">
+  <div class="profile-modal">
+    <h2>Мой профиль</h2>
+
+    <div class="profile-row">
+      <label>Ник</label>
+      <input id="profileUsername" placeholder="Например: Nikon">
+    </div>
+
+    <div class="profile-row">
+      <label>Статус / bio</label>
+      <input id="profileBio" placeholder="Например: строю Telegrom">
+    </div>
+
+    <div class="profile-row">
+      <label>Ссылка на аватарку</label>
+      <input id="profileAvatar" placeholder="https://.../avatar.png" oninput="updateProfilePreview()">
+    </div>
+
+    <div class="profile-preview">
+      <div class="avatar" id="profilePreviewAvatar">TG</div>
+      <div>
+        <div id="profilePreviewName" style="font-weight:bold">username</div>
+        <div class="small" id="profilePreviewBio">bio</div>
+      </div>
+    </div>
+
+    <button onclick="saveProfile()">Сохранить</button>
+    <button class="secondary" onclick="closeProfile()">Закрыть</button>
+  </div>
+</div>
+
 
 <script>
 const db = window.supabase.createClient(
@@ -252,7 +335,7 @@ async function saveOrUpdateUser(){
 
   if(!data || data.length === 0){
     await db.from("telegrom_users")
-      .insert([{ username: username, last_seen: now }]);
+      .insert([{ username: username, last_seen: now, bio: "", avatar: "" }]);
     return;
   }
 
@@ -265,6 +348,7 @@ async function startApp(){
   document.getElementById("authBox").style.display = "none";
   document.getElementById("mainBox").style.display = "flex";
   document.getElementById("logoutBtn").style.display = "inline-block";
+  document.getElementById("profileBtn").style.display = "inline-block";
   document.getElementById("currentUserText").textContent = "Ты: " + username + " ";
 
   await saveOrUpdateUser();
@@ -384,9 +468,7 @@ function renderUsersFromCache(){
     div.className = "user";
     if(user.username === friend) div.classList.add("active");
 
-    const avatar = document.createElement("div");
-    avatar.className = "avatar";
-    avatar.textContent = getInitials(user.username);
+    const avatar = createAvatar(user.username, user.avatar);
 
     const main = document.createElement("div");
     main.className = "user-main";
@@ -407,7 +489,7 @@ function renderUsersFromCache(){
 
     const preview = document.createElement("div");
     preview.className = "user-preview";
-    preview.textContent = last ? previewMessage(last) : "Нет сообщений";
+    preview.textContent = last ? previewMessage(last) : (user.bio || "Нет сообщений");
 
     main.appendChild(top);
     main.appendChild(preview);
@@ -437,6 +519,26 @@ function renderUsersFromCache(){
 
 function getInitials(name){
   return String(name).slice(0,2).toUpperCase();
+}
+
+function createAvatar(name, avatarUrl){
+  const avatar = document.createElement("div");
+  avatar.className = "avatar";
+
+  if(avatarUrl && /^https?:\/\//i.test(avatarUrl)){
+    const img = document.createElement("img");
+    img.src = avatarUrl;
+    img.alt = name;
+    img.onerror = () => {
+      avatar.innerHTML = "";
+      avatar.textContent = getInitials(name);
+    };
+    avatar.appendChild(img);
+  }else{
+    avatar.textContent = getInitials(name);
+  }
+
+  return avatar;
 }
 
 function previewMessage(msg){
@@ -683,6 +785,125 @@ async function deleteMessage(id){
 
   await loadPrivateMessages();
   await loadUsers();
+}
+
+
+async function openProfile(){
+  if(!username) return;
+
+  const { data, error } = await db
+    .from("telegrom_users")
+    .select("*")
+    .eq("username", username)
+    .limit(1);
+
+  if(error){
+    alert("Ошибка профиля: " + error.message);
+    console.error(error);
+    return;
+  }
+
+  const profile = data && data.length ? data[0] : {};
+
+  document.getElementById("profileUsername").value = username;
+  document.getElementById("profileBio").value = profile.bio || "";
+  document.getElementById("profileAvatar").value = profile.avatar || "";
+
+  updateProfilePreview();
+  document.getElementById("profileBackdrop").style.display = "flex";
+}
+
+function closeProfile(){
+  document.getElementById("profileBackdrop").style.display = "none";
+}
+
+function updateProfilePreview(){
+  const name = document.getElementById("profileUsername").value.trim() || username || "TG";
+  const bio = document.getElementById("profileBio").value.trim() || "без статуса";
+  const avatarUrl = document.getElementById("profileAvatar").value.trim();
+
+  document.getElementById("profilePreviewName").textContent = name;
+  document.getElementById("profilePreviewBio").textContent = bio;
+
+  const holder = document.getElementById("profilePreviewAvatar");
+  holder.innerHTML = "";
+
+  const avatar = createAvatar(name, avatarUrl);
+  holder.replaceWith(avatar);
+  avatar.id = "profilePreviewAvatar";
+}
+
+async function saveProfile(){
+  const newUsername = document.getElementById("profileUsername").value.trim();
+  const bio = document.getElementById("profileBio").value.trim();
+  const avatar = document.getElementById("profileAvatar").value.trim();
+
+  if(!isGoodUsername(newUsername)){
+    alert("Ник должен быть минимум 2 буквы и не только цифры");
+    return;
+  }
+
+  const oldUsername = username;
+
+  if(newUsername !== oldUsername){
+    const { data: existing, error: checkError } = await db
+      .from("telegrom_users")
+      .select("*")
+      .eq("username", newUsername);
+
+    if(checkError){
+      alert("Ошибка проверки ника: " + checkError.message);
+      console.error(checkError);
+      return;
+    }
+
+    if(existing && existing.length > 0){
+      alert("Такой ник уже занят");
+      return;
+    }
+  }
+
+  const { error } = await db
+    .from("telegrom_users")
+    .update({
+      username: newUsername,
+      bio: bio,
+      avatar: avatar,
+      last_seen: new Date().toISOString()
+    })
+    .eq("username", oldUsername);
+
+  if(error){
+    alert("Ошибка сохранения профиля: " + error.message);
+    console.error(error);
+    return;
+  }
+
+  if(newUsername !== oldUsername){
+    await db.from("telegrom_private_messages").update({ from_user: newUsername }).eq("from_user", oldUsername);
+    await db.from("telegrom_private_messages").update({ to_user: newUsername }).eq("to_user", oldUsername);
+    await db.from("telegrom_typing").update({ from_user: newUsername }).eq("from_user", oldUsername);
+    await db.from("telegrom_typing").update({ to_user: newUsername }).eq("to_user", oldUsername);
+
+    const { error: authError } = await db.auth.updateUser({
+      data: { username: newUsername }
+    });
+
+    if(authError){
+      console.error(authError);
+    }
+
+    username = newUsername;
+    localStorage.setItem("telegrom_username", username);
+  }
+
+  document.getElementById("currentUserText").textContent = "Ты: " + username + " ";
+  closeProfile();
+  await loadUsers();
+
+  if(friend){
+    await loadPrivateMessages();
+  }
 }
 
 function handleEnter(event){
