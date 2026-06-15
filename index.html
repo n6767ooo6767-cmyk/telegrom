@@ -1635,7 +1635,8 @@ async function loadBlockedUsers(){
     .eq("blocker_username", username);
 
   if(error){
-    console.error("Blocked users load error:", error);
+    console.warn("Blocked users unavailable:", error);
+    blockedUsersCache = new Set();
     return;
   }
 
@@ -1860,7 +1861,8 @@ async function loadOutgoingFriendRequests(){
 }
 
 function isPendingFriendUser(user){
-  return !!(user && user.auth_id && outgoingFriendRequestsCache.has(user.auth_id));
+  if(!user || !user.auth_id) return false;
+  return outgoingFriendRequestsCache.has(user.auth_id);
 }
 
 function canOpenPrivateChat(targetUsername){
@@ -3763,7 +3765,7 @@ function createPeerConnection(){
     if(audio) audio.srcObject = stream;
 
     if(remoteVideo && isVideoCall){
-      remoteVideo.srcObject = stream;
+      if(remoteVideo) remoteVideo.srcObject = stream;
       const grid = document.getElementById("videoCallGrid");
       if(grid) grid.style.display = "grid";
     }
@@ -3825,7 +3827,7 @@ function showLocalVideo(stream){
   const camBtn = document.getElementById("toggleCameraBtn");
   const micBtn = document.getElementById("toggleMicBtn");
 
-  if(localVideo) localVideo.srcObject = stream;
+  if(localVideo) if(localVideo) localVideo.srcObject = stream;
   if(grid) grid.style.display = isVideoCall ? "grid" : "none";
   if(camBtn) camBtn.style.display = isVideoCall ? "inline-block" : "none";
   if(micBtn) micBtn.style.display = "inline-block";
