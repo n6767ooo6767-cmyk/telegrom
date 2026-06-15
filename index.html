@@ -7,7 +7,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Pager">
-<title>Pager</title>
+<title>Pager X V10.1 Avatar Upload</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -1107,6 +1107,11 @@ button.locked-chat{
     <div class="profile-row">
       <label id="profileAvatarLabel">Ссылка на аватарку</label>
       <input id="profileAvatar" placeholder="https://.../avatar.png" oninput="updateProfilePreview()">
+    <div class="profile-row">
+      <input type="file" id="avatarFileInput" accept="image/*">
+      <button type="button" onclick="uploadAvatar()">📷 Upload Avatar</button>
+    </div>
+
     </div>
 
 
@@ -1603,6 +1608,42 @@ async function saveThemeToSettings(theme){
   }
 }
 
+
+
+async function uploadAvatar(){
+  const input = document.getElementById("avatarFileInput");
+  const file = input && input.files ? input.files[0] : null;
+
+  if(!file){
+    alert("Choose image first");
+    return;
+  }
+
+  const ext = (file.name.split(".").pop() || "jpg");
+  const path = username + "/avatar_" + Date.now() + "." + ext;
+
+  const { error: uploadError } = await db.storage
+    .from("avatars")
+    .upload(path, file, { upsert:true });
+
+  if(uploadError){
+    alert("Upload error: " + uploadError.message);
+    return;
+  }
+
+  const { data } = db.storage.from("avatars").getPublicUrl(path);
+
+  const avatarInput = document.getElementById("profileAvatar");
+  if(avatarInput){
+    avatarInput.value = data.publicUrl;
+  }
+
+  if(typeof updateProfilePreview === "function"){
+    updateProfilePreview();
+  }
+
+  alert("Avatar uploaded");
+}
 
 async function init(){
   const { data } = await db.auth.getSession();
