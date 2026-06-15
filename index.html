@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0b1020">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Pager">
-<title>Pager X V8 Profiles Safety</title>
+<title>Pager X V9 Video Calls</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -798,6 +798,56 @@ button.locked-chat{
   font-size:11px;
 }
 
+
+/* ===== Pager X V9 Video Calls ===== */
+.video-call-grid{
+  display:none;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+  margin:14px 0;
+}
+.video-tile{
+  position:relative;
+  background:#020617;
+  border:1px solid rgba(255,255,255,.12);
+  border-radius:16px;
+  overflow:hidden;
+  min-height:150px;
+}
+.video-tile video{
+  width:100%;
+  height:210px;
+  object-fit:cover;
+  display:block;
+  background:#020617;
+}
+.video-label{
+  position:absolute;
+  left:8px;
+  bottom:8px;
+  font-size:12px;
+  padding:4px 8px;
+  border-radius:999px;
+  background:rgba(0,0,0,.55);
+  color:white;
+}
+.video-call-toggle{
+  background:#2563eb!important;
+  color:white!important;
+}
+.video-call-muted{
+  background:#64748b!important;
+  color:white!important;
+}
+@media(max-width:700px){
+  .video-call-grid{
+    grid-template-columns:1fr;
+  }
+  .video-tile video{
+    height:190px;
+  }
+}
+
 </style>
 </head>
 
@@ -818,7 +868,7 @@ button.locked-chat{
 
 <div class="app">
   <div class="header">
-    <div>📟 Pager <span class="small" id="buildLabel">X V8 PROFILES</span></div>
+    <div>📟 Pager <span class="small" id="buildLabel">X V9 VIDEO</span></div>
     <div>
       <span class="small" id="currentUserText"></span>
       <button class="secondary" id="notifyBtn" style="display:none" onclick="enableNotifications()">🔔</button>
@@ -870,6 +920,7 @@ button.locked-chat{
           <button class="back-btn" onclick="backToChats()">←</button>
           <div id="chatTitle">Выбери пользователя слева</div>
           <button class="call-btn" id="callBtn" style="display:none" onclick="startVoiceCall()">📞</button>
+          <button class="call-btn video-call-toggle" id="videoCallBtn" style="display:none" onclick="startVideoCall()">📹</button>
         </div>
         <div id="typingStatus" class="typing"></div>
       </div>
@@ -952,10 +1003,23 @@ button.locked-chat{
     <div class="call-status" id="callStatus">Подключение...</div>
     <div class="call-timer" id="callTimer">00:00</div>
 
+    <div class="video-call-grid" id="videoCallGrid">
+      <div class="video-tile">
+        <video id="remoteVideo" autoplay playsinline></video>
+        <div class="video-label">Remote</div>
+      </div>
+      <div class="video-tile">
+        <video id="localVideo" autoplay muted playsinline></video>
+        <div class="video-label">You</div>
+      </div>
+    </div>
+
     <audio id="remoteAudio" autoplay playsinline></audio>
 
     <div class="call-actions">
       <button class="call-accept" id="acceptCallBtn" style="display:none" onclick="acceptIncomingCall()">Ответить</button>
+      <button class="secondary" id="toggleCameraBtn" style="display:none" onclick="toggleCamera()">📷 Off</button>
+      <button class="secondary" id="toggleMicBtn" style="display:none" onclick="toggleMic()">🎤 Off</button>
       <button class="call-end" id="endCallBtn" onclick="endVoiceCall()">Завершить</button>
     </div>
   </div>
@@ -986,6 +1050,9 @@ let callRole = null;
 let callPollTimer = null;
 let incomingPollTimer = null;
 let knownIce = new Set();
+let isVideoCall = false;
+let cameraEnabled = true;
+let micEnabled = true;
 
 let usersTimer = null;
 let messagesTimer = null;
@@ -1013,7 +1080,7 @@ let currentTheme = "dark";
 let currentLanguage = localStorage.getItem("pager_language") || null;
 let callStartedAt = null;
 let callTimerInterval = null;
-let pagerBuildName = "Pager X V8 Profiles Safety";
+let pagerBuildName = "Pager X V9 Video Calls";
 
 const THEME_VALUES = {
   dark: {
@@ -1602,6 +1669,8 @@ async function blockUser(targetUsername){
     localStorage.removeItem("telegrom_friend");
     document.getElementById("sendBox").style.display = "none";
     document.getElementById("callBtn").style.display = "none";
+  const videoBtn = document.getElementById("videoCallBtn");
+  if(videoBtn) videoBtn.style.display = "none";
     document.getElementById("chatTitle").textContent = getUiLang().choose || "Choose a user";
     document.getElementById("chat").innerHTML = '<div class="empty">User blocked.</div>';
   }
@@ -1664,7 +1733,7 @@ function openUserCard(user){
     friendBtn.disabled = false;
   }
 
-  messageBtn.disabled = !isFriendUsername(user.username);
+  messageBtn.disabled = isBlockedUsername(user.username);
   blockBtn.textContent = isBlockedUsername(user.username) ? "Unblock" : "Block";
 
   modal.style.display = "flex";
@@ -1796,7 +1865,7 @@ function isPendingFriendUser(user){
 
 function canOpenPrivateChat(targetUsername){
   if(!targetUsername) return false;
-  return isFriendUsername(targetUsername);
+  return true;
 }
 
 
@@ -2325,6 +2394,8 @@ async function openChat(selectedUser){
   document.getElementById("typingStatus").textContent = "";
   document.getElementById("sendBox").style.display = "flex";
   document.getElementById("callBtn").style.display = "inline-block";
+  const videoBtn = document.getElementById("videoCallBtn");
+  if(videoBtn) videoBtn.style.display = "inline-block";
   document.body.classList.add("mobile-chat-open");
 
   await markMessagesAsRead();
@@ -3349,6 +3420,8 @@ async function openGroupChat(groupId, groupName){
   document.getElementById("typingStatus").textContent = "";
   document.getElementById("sendBox").style.display = "flex";
   document.getElementById("callBtn").style.display = "none";
+  const videoBtn = document.getElementById("videoCallBtn");
+  if(videoBtn) videoBtn.style.display = "none";
   document.body.classList.add("mobile-chat-open");
 
   await loadGroups();
@@ -3553,6 +3626,8 @@ async function openChannel(channelId, channelName, channelOwner){
 
   document.getElementById("sendBox").style.display = currentChannelOwner === username ? "flex" : "none";
   document.getElementById("callBtn").style.display = "none";
+  const videoBtn = document.getElementById("videoCallBtn");
+  if(videoBtn) videoBtn.style.display = "none";
   document.body.classList.add("mobile-chat-open");
 
   await loadChannels();
@@ -3659,6 +3734,16 @@ function closeCallModal(){
   document.getElementById("callModal").style.display = "none";
   document.getElementById("acceptCallBtn").style.display = "none";
   document.getElementById("remoteAudio").srcObject = null;
+  const remoteVideo = document.getElementById("remoteVideo");
+  const localVideo = document.getElementById("localVideo");
+  const grid = document.getElementById("videoCallGrid");
+  if(remoteVideo) remoteVideo.srcObject = null;
+  if(localVideo) localVideo.srcObject = null;
+  if(grid) grid.style.display = "none";
+  const camBtn = document.getElementById("toggleCameraBtn");
+  const micBtn = document.getElementById("toggleMicBtn");
+  if(camBtn) camBtn.style.display = "none";
+  if(micBtn) micBtn.style.display = "none";
 }
 
 function createPeerConnection(){
@@ -3670,8 +3755,18 @@ function createPeerConnection(){
   });
 
   pc.ontrack = event => {
+    const stream = event.streams[0];
+
     const audio = document.getElementById("remoteAudio");
-    audio.srcObject = event.streams[0];
+    const remoteVideo = document.getElementById("remoteVideo");
+
+    if(audio) audio.srcObject = stream;
+
+    if(remoteVideo && isVideoCall){
+      remoteVideo.srcObject = stream;
+      const grid = document.getElementById("videoCallGrid");
+      if(grid) grid.style.display = "grid";
+    }
   };
 
   pc.onconnectionstatechange = () => {
@@ -3713,7 +3808,63 @@ async function getMicrophone(){
   return await navigator.mediaDevices.getUserMedia({ audio:true, video:false });
 }
 
+async function getCameraAndMicrophone(){
+  return await navigator.mediaDevices.getUserMedia({
+    audio:true,
+    video:{
+      width:{ ideal:1280 },
+      height:{ ideal:720 },
+      facingMode:"user"
+    }
+  });
+}
+
+function showLocalVideo(stream){
+  const localVideo = document.getElementById("localVideo");
+  const grid = document.getElementById("videoCallGrid");
+  const camBtn = document.getElementById("toggleCameraBtn");
+  const micBtn = document.getElementById("toggleMicBtn");
+
+  if(localVideo) localVideo.srcObject = stream;
+  if(grid) grid.style.display = isVideoCall ? "grid" : "none";
+  if(camBtn) camBtn.style.display = isVideoCall ? "inline-block" : "none";
+  if(micBtn) micBtn.style.display = "inline-block";
+
+  cameraEnabled = true;
+  micEnabled = true;
+
+  if(camBtn) camBtn.textContent = "📷 Off";
+  if(micBtn) micBtn.textContent = "🎤 Off";
+}
+
+function toggleCamera(){
+  if(!localStream) return;
+
+  cameraEnabled = !cameraEnabled;
+
+  localStream.getVideoTracks().forEach(track => {
+    track.enabled = cameraEnabled;
+  });
+
+  const btn = document.getElementById("toggleCameraBtn");
+  if(btn) btn.textContent = cameraEnabled ? "📷 Off" : "📷 On";
+}
+
+function toggleMic(){
+  if(!localStream) return;
+
+  micEnabled = !micEnabled;
+
+  localStream.getAudioTracks().forEach(track => {
+    track.enabled = micEnabled;
+  });
+
+  const btn = document.getElementById("toggleMicBtn");
+  if(btn) btn.textContent = micEnabled ? "🎤 Off" : "🎤 On";
+}
+
 async function startVoiceCall(){
+  isVideoCall = false;
   if(!friend){
     alert("Сначала выбери пользователя");
     return;
@@ -3726,6 +3877,7 @@ async function startVoiceCall(){
     openCallModal("Звонок: " + friend, "Звоним...", false);
 
     localStream = await getMicrophone();
+    showLocalVideo(localStream);
     peerConnection = createPeerConnection();
 
     localStream.getTracks().forEach(track => {
@@ -3743,7 +3895,8 @@ async function startVoiceCall(){
         status: "ringing",
         offer: offer,
         caller_ice: [],
-        callee_ice: []
+        callee_ice: [],
+        call_type: isVideoCall ? "video" : "voice"
       }])
       .select();
 
@@ -3761,6 +3914,64 @@ async function startVoiceCall(){
 
   }catch(error){
     alert("Ошибка звонка: " + error.message);
+    console.error(error);
+    endVoiceCall(false);
+  }
+}
+
+
+async function startVideoCall(){
+  if(!friend){
+    alert("Сначала выбери пользователя");
+    return;
+  }
+
+  try{
+    isVideoCall = true;
+    callRole = "caller";
+    knownIce = new Set();
+
+    openCallModal("Video call: " + friend, "Calling...", false);
+
+    localStream = await getCameraAndMicrophone();
+    showLocalVideo(localStream);
+
+    peerConnection = createPeerConnection();
+
+    localStream.getTracks().forEach(track => {
+      peerConnection.addTrack(track, localStream);
+    });
+
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+
+    const { data, error } = await db
+      .from("telegram_calls")
+      .insert([{
+        from_user: username,
+        to_user: friend,
+        status: "ringing",
+        offer: offer,
+        caller_ice: [],
+        callee_ice: [],
+        call_type: "video"
+      }])
+      .select();
+
+    if(error){
+      alert("Video call error: " + error.message);
+      console.error(error);
+      endVoiceCall(false);
+      return;
+    }
+
+    activeCallId = data[0].id;
+
+    if(callPollTimer) clearInterval(callPollTimer);
+    callPollTimer = setInterval(pollCallerCallState, 1500);
+
+  }catch(error){
+    alert("Camera/microphone error: " + error.message);
     console.error(error);
     endVoiceCall(false);
   }
@@ -3786,7 +3997,8 @@ async function checkIncomingCalls(){
     incomingCallData = data[0];
     activeCallId = incomingCallData.id;
     callRole = "callee";
-    openCallModal("Входящий звонок", "Звонит: " + incomingCallData.from_user, true);
+    isVideoCall = incomingCallData.call_type === "video";
+    openCallModal(isVideoCall ? "Incoming video call" : "Incoming voice call", "From: " + incomingCallData.from_user, true);
   }
 }
 
@@ -3800,7 +4012,8 @@ async function acceptIncomingCall(){
     document.getElementById("acceptCallBtn").style.display = "none";
     document.getElementById("callStatus").textContent = "Подключаемся...";
 
-    localStream = await getMicrophone();
+    localStream = isVideoCall ? await getCameraAndMicrophone() : await getMicrophone();
+    showLocalVideo(localStream);
     peerConnection = createPeerConnection();
 
     localStream.getTracks().forEach(track => {
@@ -3941,6 +4154,9 @@ async function endVoiceCall(updateDb = true){
   incomingCallData = null;
   callRole = null;
   knownIce = new Set();
+  isVideoCall = false;
+  cameraEnabled = true;
+  micEnabled = true;
 
   closeCallModal();
 }
@@ -3987,6 +4203,8 @@ function showSavedMessages(){
   document.body.classList.add("mobile-chat-open");
   document.getElementById("sendBox").style.display = "none";
   document.getElementById("callBtn").style.display = "none";
+  const videoBtn = document.getElementById("videoCallBtn");
+  if(videoBtn) videoBtn.style.display = "none";
   document.getElementById("typingStatus").textContent = "";
   document.getElementById("chatTitle").textContent = "⭐ Saved messages";
 
@@ -4034,6 +4252,8 @@ function showCallHistory(){
   document.body.classList.add("mobile-chat-open");
   document.getElementById("sendBox").style.display = "none";
   document.getElementById("callBtn").style.display = "none";
+  const videoBtn = document.getElementById("videoCallBtn");
+  if(videoBtn) videoBtn.style.display = "none";
   document.getElementById("typingStatus").textContent = "";
   document.getElementById("chatTitle").textContent = "📞 Call history";
 
