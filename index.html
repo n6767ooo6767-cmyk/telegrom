@@ -2134,7 +2134,7 @@ function getUiLang(){
       noUsers:"No users.",
       noGroups:"No groups yet.",
       noChannels:"No channels yet.",
-      noRequests:"${getUiLang().noRequests}",
+      noRequests:"No friend requests.",
       addFriend:"➕ Add friend",
       friend:"👥 Friend",
       friendSent:"Friend request sent to ",
@@ -2151,10 +2151,11 @@ function getUiLang(){
       groupChat:"Group chat",
       noMessages:"No messages yet. Write first.",
       onlyOwner:"Only owner can publish",
-      youOwner:"You own this channel"
+      youOwner:"You own this channel",
+      choose:"Choose a user on the left"
     },
     ru:{
-      noUsers:"${getUiLang().noUsers}",
+      noUsers:"Пользователей нет.",
       noGroups:"Групп пока нет.",
       noChannels:"Каналов пока нет.",
       noRequests:"Заявок в друзья нет.",
@@ -2171,10 +2172,11 @@ function getUiLang(){
       group:"👥 Группа: ",
       channel:"📢 Канал: ",
       owner:"Автор: ",
-      groupChat:getUiLang().groupChat,
-      noMessages:"${getUiLang().noMessages}",
+      groupChat:"Групповой чат",
+      noMessages:"Пока сообщений нет. Напиши первым.",
       onlyOwner:"Только владелец может публиковать",
-      youOwner:"Вы владелец канала"
+      youOwner:"Вы владелец канала",
+      choose:"Выбери пользователя слева"
     },
     pl:{
       noUsers:"Brak użytkowników.",
@@ -2197,9 +2199,11 @@ function getUiLang(){
       groupChat:"Czat grupowy",
       noMessages:"Brak wiadomości. Napisz jako pierwszy.",
       onlyOwner:"Tylko właściciel może publikować",
-      youOwner:"Jesteś właścicielem kanału"
+      youOwner:"Jesteś właścicielem kanału",
+      choose:"Wybierz użytkownika po lewej"
     }
   };
+
   return all[currentLanguage || "en"] || all.en;
 }
 
@@ -2371,11 +2375,6 @@ function isOnline(lastSeen){
 }
 
 async function openChat(selectedUser){
-  if(!canOpenPrivateChat(selectedUser)){
-    toast(getUiLang().chatLocked || "Chat is available after friendship");
-    return;
-  }
-
   currentChatType = "private";
   currentGroupId = null;
   currentGroupName = "";
