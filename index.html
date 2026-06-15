@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pager X V6.1 Full Language</title>
+<title>Pager X V7 Friends Pro</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -704,6 +704,23 @@ button:active{
   margin-top:4px;
 }
 
+
+/* ===== Pager X V7 Friends Pro ===== */
+button.pending-friend{
+  background:#6b7280!important;
+  color:white!important;
+  cursor:default;
+  opacity:.85;
+}
+button.locked-chat{
+  opacity:.7;
+}
+.friend-lock-note{
+  margin-top:7px;
+  font-size:11px;
+  color:var(--muted);
+}
+
 </style>
 </head>
 
@@ -724,7 +741,7 @@ button:active{
 
 <div class="app">
   <div class="header">
-    <div>📟 Pager <span class="small" id="buildLabel">X V6.1 LANGUAGE</span></div>
+    <div>📟 Pager <span class="small" id="buildLabel">X V7 FRIENDS PRO</span></div>
     <div>
       <span class="small" id="currentUserText"></span>
       <button class="secondary" id="notifyBtn" style="display:none" onclick="enableNotifications()">🔔</button>
@@ -905,7 +922,8 @@ let usersCache = [];
 let friendRowsCache = [];
 let friendNamesCache = new Set();
 let friendRequestRowsCache = [];
-let peopleMode = localStorage.getItem('pager_people_mode') || 'all';
+let outgoingFriendRequestsCache = new Set();
+let peopleMode = localStorage.getItem('pager_people_mode') || 'friends';
 let unreadCache = {};
 let lastMessagesCache = {};
 let groupsCache = [];
@@ -916,7 +934,7 @@ let currentTheme = "dark";
 let currentLanguage = localStorage.getItem("pager_language") || null;
 let callStartedAt = null;
 let callTimerInterval = null;
-let pagerBuildName = "Pager X V6.1 Full Language";
+let pagerBuildName = "Pager X V7 Friends Pro";
 
 const THEME_VALUES = {
   dark: {
@@ -1422,6 +1440,7 @@ async function startApp(){
   await loadFriendData();
   await loadUsers();
   await loadFriendRequests();
+  await loadOutgoingFriendRequests();
   await primeKnownMessages();
 
   setInterval(checkNewIncomingMessages, 3000);
@@ -1431,6 +1450,7 @@ async function startApp(){
       await loadFriendData();
       await loadUsers();
       await loadFriendRequests();
+      await loadOutgoingFriendRequests();
       await loadGroups();
       await loadChannels();
   await loadChannels();
@@ -1523,11 +1543,43 @@ async function loadFriendRequests(){
   renderFriendRequests();
 }
 
+async function loadOutgoingFriendRequests(){
+  const myId = getMyUserId();
+  outgoingFriendRequestsCache = new Set();
+
+  if(!myId) return;
+
+  const { data, error } = await db
+    .from("friend_requests")
+    .select("to_user")
+    .eq("from_user", myId)
+    .eq("status", "pending");
+
+  if(error){
+    console.error("Outgoing requests load error:", error);
+    return;
+  }
+
+  (data || []).forEach(row => {
+    if(row.to_user) outgoingFriendRequestsCache.add(row.to_user);
+  });
+}
+
+function isPendingFriendUser(user){
+  return !!(user && user.auth_id && outgoingFriendRequestsCache.has(user.auth_id));
+}
+
+function canOpenPrivateChat(targetUsername){
+  if(!targetUsername) return false;
+  return isFriendUsername(targetUsername);
+}
+
+
 function showAllUsersMode(){
   peopleMode = "all";
   localStorage.setItem("pager_people_mode", peopleMode);
   renderUsersFromCache();
-  toast(getUiLang().showingAll);
+  toast(getUiLang().showingAll + " · chats locked until friendship");
 }
 
 function showFriendsMode(){
@@ -1605,6 +1657,8 @@ async function sendFriendRequest(targetUsername){
     return;
   }
 
+  await loadOutgoingFriendRequests();
+  await loadUsers();
   toast(getUiLang().friendSent + targetUsername);
 }
 
@@ -1639,8 +1693,9 @@ async function acceptFriendRequest(requestId, fromUserId){
 
   await loadFriendData();
   await loadFriendRequests();
+  await loadOutgoingFriendRequests();
   await loadUsers();
-  toast("Friend added");
+  toast(getUiLang().friendAdded || "Friend added");
 }
 
 async function declineFriendRequest(requestId){
@@ -1787,6 +1842,9 @@ function getUiLang(){
       addFriend:"➕ Add friend",
       friend:"👥 Friend",
       friendSent:"Friend request sent to ",
+      pending:"⏳ Pending",
+      chatLocked:"Chat is available after friendship",
+      friendAdded:"Friend added",
       showingAll:"Showing all users",
       showingFriends:"Showing friends",
       friendRequests:"Friend requests",
@@ -1807,6 +1865,9 @@ function getUiLang(){
       addFriend:"➕ Добавить",
       friend:"👥 Друг",
       friendSent:"Заявка отправлена: ",
+      pending:"⏳ Ожидает",
+      chatLocked:"Чат доступен после добавления в друзья",
+      friendAdded:"Друг добавлен",
       showingAll:"Показаны все пользователи",
       showingFriends:"Показаны друзья",
       friendRequests:"Заявки в друзья",
@@ -1827,6 +1888,9 @@ function getUiLang(){
       addFriend:"➕ Dodaj",
       friend:"👥 Znajomy",
       friendSent:"Zaproszenie wysłane do ",
+      pending:"⏳ Oczekuje",
+      chatLocked:"Czat dostępny po dodaniu do znajomych",
+      friendAdded:"Znajomy dodany",
       showingAll:"Pokazano wszystkich użytkowników",
       showingFriends:"Pokazano znajomych",
       friendRequests:"Zaproszenia",
@@ -1918,6 +1982,15 @@ function renderUsersFromCache(){
       pill.className = "friend-pill";
       pill.textContent = getUiLang().friend;
       main.appendChild(pill);
+    }else if(isPendingFriendUser(user)){
+      const actionRow = document.createElement("div");
+      actionRow.className = "friend-action-row";
+      const pendingBtn = document.createElement("button");
+      pendingBtn.className = "mini pending-friend";
+      pendingBtn.textContent = getUiLang().pending || "⏳ Pending";
+      pendingBtn.onclick = (event) => event.stopPropagation();
+      actionRow.appendChild(pendingBtn);
+      main.appendChild(actionRow);
     }else if(peopleMode === "all"){
       const actionRow = document.createElement("div");
       actionRow.className = "friend-action-row";
@@ -1929,6 +2002,12 @@ function renderUsersFromCache(){
         sendFriendRequest(user.username);
       };
       actionRow.appendChild(addBtn);
+
+      const lockNote = document.createElement("div");
+      lockNote.className = "friend-lock-note";
+      lockNote.textContent = getUiLang().chatLocked || "Chat after friendship";
+      actionRow.appendChild(lockNote);
+
       main.appendChild(actionRow);
     }
 
@@ -1950,7 +2029,13 @@ function renderUsersFromCache(){
     div.appendChild(main);
     div.appendChild(right);
 
-    div.onclick = () => openChat(user.username);
+    div.onclick = () => {
+      if(!isFriendUsername(user.username)){
+        toast(getUiLang().chatLocked || "Chat is available after friendship");
+        return;
+      }
+      openChat(user.username);
+    };
     list.appendChild(div);
   });
 }
@@ -1996,6 +2081,11 @@ function isOnline(lastSeen){
 }
 
 async function openChat(selectedUser){
+  if(!canOpenPrivateChat(selectedUser)){
+    toast(getUiLang().chatLocked || "Chat is available after friendship");
+    return;
+  }
+
   currentChatType = "private";
   currentGroupId = null;
   currentGroupName = "";
