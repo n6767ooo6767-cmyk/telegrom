@@ -8,6 +8,25 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
+  .language-screen{
+  position:fixed;
+  inset:0;
+  background:#0b1020;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  gap:12px;
+  z-index:99999;
+}
+
+.language-screen h1{
+  margin:0;
+}
+
+.language-screen button{
+  width:260px;
+}
 *{box-sizing:border-box}
 :root{
   --bg:#0b1020;
@@ -476,6 +495,15 @@ button.mini{margin:0 0 0 6px;padding:5px 8px;font-size:11px;border-radius:8px;ba
       <button class="secondary" id="logoutBtn" style="display:none" onclick="logout()">Выйти</button>
     </div>
   </div>
+
+  <div id="languageScreen" class="language-screen">
+  <h1>Welcome to Telegrom</h1>
+  <p>Choose your language</p>
+
+  <button onclick="setLanguage('en')">🇬🇧 English</button>
+  <button onclick="setLanguage('ru')">🇷🇺 Русский</button>
+  <button onclick="setLanguage('pl')">🇵🇱 Polski</button>
+</div>
 
   <div class="auth" id="authBox">
     <h2>Вход в Telegrom</h2>
