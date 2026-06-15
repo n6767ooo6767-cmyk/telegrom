@@ -8,25 +8,6 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
-  .language-screen{
-  position:fixed;
-  inset:0;
-  background:#0b1020;
-  display:flex;
-  flex-direction:column;
-  justify-content:center;
-  align-items:center;
-  gap:12px;
-  z-index:99999;
-}
-
-.language-screen h1{
-  margin:0;
-}
-
-.language-screen button{
-  width:260px;
-}
 *{box-sizing:border-box}
 :root{
   --bg:#0b1020;
@@ -485,6 +466,15 @@ button.mini{margin:0 0 0 6px;padding:5px 8px;font-size:11px;border-radius:8px;ba
 </head>
 
 <body>
+
+<div id="languageScreen" style="position:fixed;inset:0;background:#0b1020;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:12px;z-index:999999;">
+  <h1>Welcome to Telegrom</h1>
+  <p>Choose your language</p>
+  <button onclick="setLanguage('en')">🇬🇧 English</button>
+  <button onclick="setLanguage('ru')">🇷🇺 Русский</button>
+  <button onclick="setLanguage('pl')">🇵🇱 Polski</button>
+</div>
+
 <div class="app">
   <div class="header">
     <div>💬 Telegrom <span class="small">V3.0 CALLS</span></div>
@@ -495,15 +485,6 @@ button.mini{margin:0 0 0 6px;padding:5px 8px;font-size:11px;border-radius:8px;ba
       <button class="secondary" id="logoutBtn" style="display:none" onclick="logout()">Выйти</button>
     </div>
   </div>
-
-  <div id="languageScreen" class="language-screen">
-  <h1>Welcome to Telegrom</h1>
-  <p>Choose your language</p>
-
-  <button onclick="setLanguage('en')">🇬🇧 English</button>
-  <button onclick="setLanguage('ru')">🇷🇺 Русский</button>
-  <button onclick="setLanguage('pl')">🇵🇱 Polski</button>
-</div>
 
   <div class="auth" id="authBox">
     <h2>Вход в Telegrom</h2>
@@ -657,6 +638,7 @@ let channelsCache = [];
 let knownMessageIds = new Set();
 let notificationsEnabled = false;
 let currentTheme = "dark";
+let currentLanguage = localStorage.getItem("telegrom_language") || null;
 
 const THEME_VALUES = {
   dark: {
@@ -682,53 +664,45 @@ const THEME_VALUES = {
   }
 };
 
-applyTheme(localStorage.getItem("telegrom_theme") || "dark");
-  checkLanguageScreen();
-
-function checkLanguageScreen(){
-  const saved = localStorage.getItem("telegrom_language");
-
-  if(saved){
-    currentLanguage = saved;
-    setTimeout(() => {
-      const el = document.getElementById("languageScreen");
-      if(el) el.style.display = "none";
-    }, 100);
-  }
-}
 
 function setLanguage(lang){
   currentLanguage = lang;
   localStorage.setItem("telegrom_language", lang);
 
-  document.getElementById("languageScreen").style.display = "none";
+  const ls = document.getElementById("languageScreen");
+  if(ls) ls.style.display = "none";
 
   applyLanguage();
 }
+window.setLanguage = setLanguage;
 
 function applyLanguage(){
+  const title = document.querySelector("#authBox h2");
+  if(!title) return;
 
   if(currentLanguage === "en"){
-    document.querySelector("#authBox h2").textContent = "Login to Telegrom";
-    document.getElementById("emailInput").placeholder = "Email";
-    document.getElementById("passwordInput").placeholder = "Password";
-    document.getElementById("nicknameInput").placeholder = "Nickname";
-  }
-
-  if(currentLanguage === "ru"){
-    document.querySelector("#authBox h2").textContent = "Вход в Telegrom";
-    document.getElementById("emailInput").placeholder = "Email";
-    document.getElementById("passwordInput").placeholder = "Пароль";
-    document.getElementById("nicknameInput").placeholder = "Ник";
-  }
-
-  if(currentLanguage === "pl"){
-    document.querySelector("#authBox h2").textContent = "Logowanie do Telegrom";
-    document.getElementById("emailInput").placeholder = "Email";
-    document.getElementById("passwordInput").placeholder = "Hasło";
-    document.getElementById("nicknameInput").placeholder = "Nick";
+    title.textContent = "Login to Telegrom";
+  }else if(currentLanguage === "pl"){
+    title.textContent = "Logowanie do Telegrom";
+  }else{
+    title.textContent = "Вход в Telegrom";
   }
 }
+
+document.addEventListener("DOMContentLoaded", () => {
+  const lang = localStorage.getItem("telegrom_language");
+  const ls = document.getElementById("languageScreen");
+
+  if(lang){
+    currentLanguage = lang;
+    if(ls) ls.style.display = "none";
+  }
+
+  applyLanguage();
+});
+
+
+applyTheme(localStorage.getItem("telegrom_theme") || "dark");
 init();
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -962,7 +936,6 @@ async function saveOrUpdateUser(){
 }
 
 async function startApp(){
-  applyLanguage();
   document.getElementById("authBox").style.display = "none";
   document.getElementById("mainBox").style.display = "flex";
   document.getElementById("logoutBtn").style.display = "inline-block";
@@ -2544,32 +2517,11 @@ function closeCallModal(){
 
 function createPeerConnection(){
   const pc = new RTCPeerConnection({
-  iceServers: [
-    {
-      urls: "stun:stun.relay.metered.ca:80"
-    },
-    {
-      urls: "turn:global.relay.metered.ca:80",
-      username: "07808db0a2e6f316cfa27885",
-      credential: "IAAIv8XzF+FKYz98"
-    },
-    {
-      urls: "turn:global.relay.metered.ca:80?transport=tcp",
-      username: "07808db0a2e6f316cfa27885",
-      credential: "IAAIv8XzF+FKYz98"
-    },
-    {
-      urls: "turn:global.relay.metered.ca:443",
-      username: "07808db0a2e6f316cfa27885",
-      credential: "IAAIv8XzF+FKYz98"
-    },
-    {
-      urls: "turns:global.relay.metered.ca:443?transport=tcp",
-      username: "07808db0a2e6f316cfa27885",
-      credential: "IAAIv8XzF+FKYz98"
-    }
-  ]
-});
+    iceServers:[
+      { urls:"stun:stun.l.google.com:19302" },
+      { urls:"stun:stun1.l.google.com:19302" }
+    ]
+  });
 
   pc.ontrack = event => {
     const audio = document.getElementById("remoteAudio");
