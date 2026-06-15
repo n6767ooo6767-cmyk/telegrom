@@ -3,7 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pager X V7 Friends Pro</title>
+<meta name="theme-color" content="#0b1020">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Pager">
+<title>Pager X V8 Profiles Safety</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -721,6 +724,80 @@ button.locked-chat{
   color:var(--muted);
 }
 
+
+/* ===== Pager X V8 Profiles & Safety ===== */
+.user-card-modal{
+  position:fixed;
+  inset:0;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  background:rgba(0,0,0,.65);
+  z-index:2600;
+  padding:20px;
+}
+.user-card-box{
+  width:100%;
+  max-width:430px;
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:24px;
+  box-shadow:0 25px 90px rgba(0,0,0,.5);
+  padding:22px;
+  text-align:center;
+}
+.user-card-avatar{
+  width:86px;
+  height:86px;
+  border-radius:50%;
+  margin:0 auto 12px;
+  background:linear-gradient(135deg,#38bdf8,#8b5cf6);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:28px;
+  font-weight:bold;
+  overflow:hidden;
+}
+.user-card-avatar img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+}
+.user-card-name{
+  font-size:22px;
+  font-weight:bold;
+}
+.user-card-bio{
+  color:var(--muted);
+  margin-top:6px;
+  min-height:20px;
+}
+.user-card-status{
+  margin-top:10px;
+  color:var(--accent);
+  font-size:13px;
+}
+.user-card-actions{
+  display:flex;
+  gap:8px;
+  justify-content:center;
+  flex-wrap:wrap;
+  margin-top:16px;
+}
+.user-card-actions button{
+  min-width:120px;
+}
+.blocked-pill{
+  display:inline-flex;
+  margin-top:6px;
+  border-radius:999px;
+  padding:3px 8px;
+  background:rgba(239,68,68,.14);
+  color:#fca5a5;
+  font-size:11px;
+}
+
 </style>
 </head>
 
@@ -741,7 +818,7 @@ button.locked-chat{
 
 <div class="app">
   <div class="header">
-    <div>📟 Pager <span class="small" id="buildLabel">X V7 FRIENDS PRO</span></div>
+    <div>📟 Pager <span class="small" id="buildLabel">X V8 PROFILES</span></div>
     <div>
       <span class="small" id="currentUserText"></span>
       <button class="secondary" id="notifyBtn" style="display:none" onclick="enableNotifications()">🔔</button>
@@ -923,6 +1000,8 @@ let friendRowsCache = [];
 let friendNamesCache = new Set();
 let friendRequestRowsCache = [];
 let outgoingFriendRequestsCache = new Set();
+let blockedUsersCache = new Set();
+let selectedUserCard = null;
 let peopleMode = localStorage.getItem('pager_people_mode') || 'friends';
 let unreadCache = {};
 let lastMessagesCache = {};
@@ -934,7 +1013,7 @@ let currentTheme = "dark";
 let currentLanguage = localStorage.getItem("pager_language") || null;
 let callStartedAt = null;
 let callTimerInterval = null;
-let pagerBuildName = "Pager X V7 Friends Pro";
+let pagerBuildName = "Pager X V8 Profiles Safety";
 
 const THEME_VALUES = {
   dark: {
@@ -1437,6 +1516,7 @@ async function startApp(){
 
   await saveOrUpdateUser();
   await loadThemeFromSettings();
+  await loadBlockedUsers();
   await loadFriendData();
   await loadUsers();
   await loadFriendRequests();
@@ -1447,6 +1527,7 @@ async function startApp(){
 
   if(!usersTimer){
     usersTimer = setInterval(async () => {
+      await loadBlockedUsers();
       await loadFriendData();
       await loadUsers();
       await loadFriendRequests();
@@ -1472,6 +1553,150 @@ async function startApp(){
   }else if(friend){
     openChat(friend);
   }
+}
+
+
+
+async function loadBlockedUsers(){
+  blockedUsersCache = new Set();
+
+  if(!username) return;
+
+  const { data, error } = await db
+    .from("pager_blocked_users")
+    .select("*")
+    .eq("blocker_username", username);
+
+  if(error){
+    console.error("Blocked users load error:", error);
+    return;
+  }
+
+  (data || []).forEach(row => {
+    if(row.blocked_username) blockedUsersCache.add(row.blocked_username);
+  });
+}
+
+function isBlockedUsername(name){
+  return blockedUsersCache.has(name);
+}
+
+async function blockUser(targetUsername){
+  if(!username || !targetUsername || targetUsername === username) return;
+
+  const { error } = await db
+    .from("pager_blocked_users")
+    .insert([{ blocker_username: username, blocked_username: targetUsername }]);
+
+  if(error && !String(error.message || "").toLowerCase().includes("duplicate")){
+    alert("Block error: " + error.message);
+    console.error(error);
+    return;
+  }
+
+  await loadBlockedUsers();
+  await loadUsers();
+
+  if(friend === targetUsername){
+    friend = null;
+    localStorage.removeItem("telegrom_friend");
+    document.getElementById("sendBox").style.display = "none";
+    document.getElementById("callBtn").style.display = "none";
+    document.getElementById("chatTitle").textContent = getUiLang().choose || "Choose a user";
+    document.getElementById("chat").innerHTML = '<div class="empty">User blocked.</div>';
+  }
+
+  toast("Blocked: " + targetUsername);
+}
+
+async function unblockUser(targetUsername){
+  if(!username || !targetUsername) return;
+
+  const { error } = await db
+    .from("pager_blocked_users")
+    .delete()
+    .eq("blocker_username", username)
+    .eq("blocked_username", targetUsername);
+
+  if(error){
+    alert("Unblock error: " + error.message);
+    console.error(error);
+    return;
+  }
+
+  await loadBlockedUsers();
+  await loadUsers();
+  toast("Unblocked: " + targetUsername);
+}
+
+function openUserCard(user){
+  selectedUserCard = user;
+
+  const modal = document.getElementById("userCardModal");
+  const avatar = document.getElementById("userCardAvatar");
+  const name = document.getElementById("userCardName");
+  const bio = document.getElementById("userCardBio");
+  const status = document.getElementById("userCardStatus");
+  const friendBtn = document.getElementById("userCardFriendBtn");
+  const messageBtn = document.getElementById("userCardMessageBtn");
+  const blockBtn = document.getElementById("userCardBlockBtn");
+
+  if(!modal || !user) return;
+
+  avatar.innerHTML = "";
+  const av = createAvatar(user.username, user.avatar);
+  av.className = "user-card-avatar";
+  avatar.replaceWith(av);
+  av.id = "userCardAvatar";
+
+  name.textContent = user.username || "unknown";
+  bio.textContent = user.bio || "No bio";
+  status.textContent = isOnline(user.last_seen) ? "🟢 Online" : "⚫ Offline";
+
+  if(isFriendUsername(user.username)){
+    friendBtn.textContent = getUiLang().friend || "Friend";
+    friendBtn.disabled = true;
+  }else if(isPendingFriendUser(user)){
+    friendBtn.textContent = getUiLang().pending || "Pending";
+    friendBtn.disabled = true;
+  }else{
+    friendBtn.textContent = getUiLang().addFriend || "Add friend";
+    friendBtn.disabled = false;
+  }
+
+  messageBtn.disabled = !isFriendUsername(user.username);
+  blockBtn.textContent = isBlockedUsername(user.username) ? "Unblock" : "Block";
+
+  modal.style.display = "flex";
+}
+
+function closeUserCard(){
+  const modal = document.getElementById("userCardModal");
+  if(modal) modal.style.display = "none";
+}
+
+function messageFromUserCard(){
+  if(!selectedUserCard) return;
+  closeUserCard();
+  openChat(selectedUserCard.username);
+}
+
+async function friendFromUserCard(){
+  if(!selectedUserCard) return;
+  await sendFriendRequest(selectedUserCard.username);
+  closeUserCard();
+}
+
+async function toggleBlockFromUserCard(){
+  if(!selectedUserCard) return;
+
+  if(isBlockedUsername(selectedUserCard.username)){
+    await unblockUser(selectedUserCard.username);
+  }else{
+    await blockUser(selectedUserCard.username);
+  }
+
+  closeUserCard();
 }
 
 
@@ -1914,7 +2139,7 @@ function renderUsersFromCache(){
   list.innerHTML = "";
 
   let filtered = usersCache.filter(user => {
-    return user.username && user.username !== username && isGoodUsername(user.username);
+    return user.username && user.username !== username && isGoodUsername(user.username) && !isBlockedUsername(user.username);
   });
 
   if(peopleMode === "requests"){
@@ -2029,13 +2254,7 @@ function renderUsersFromCache(){
     div.appendChild(main);
     div.appendChild(right);
 
-    div.onclick = () => {
-      if(!isFriendUsername(user.username)){
-        toast(getUiLang().chatLocked || "Chat is available after friendship");
-        return;
-      }
-      openChat(user.username);
-    };
+    div.onclick = () => openUserCard(user);
     list.appendChild(div);
   });
 }
@@ -2356,6 +2575,11 @@ async function sendPhotoMessage(event){
 async function toggleVoiceRecording(){
   if(!friend){
     alert("Сначала выбери пользователя");
+    return;
+  }
+
+  if(isBlockedUsername(friend)){
+    alert("User is blocked");
     return;
   }
 
@@ -4052,6 +4276,22 @@ function addEmoji(e){
   <h3>🧪 Pager Diagnostics</h3>
   <pre id="devPanelContent">Loading...</pre>
   <button class="secondary" onclick="toggleDevPanel()">Close</button>
+</div>
+
+
+<div class="user-card-modal" id="userCardModal">
+  <div class="user-card-box">
+    <div class="user-card-avatar" id="userCardAvatar">PG</div>
+    <div class="user-card-name" id="userCardName">username</div>
+    <div class="user-card-bio" id="userCardBio">bio</div>
+    <div class="user-card-status" id="userCardStatus">status</div>
+    <div class="user-card-actions">
+      <button id="userCardMessageBtn" onclick="messageFromUserCard()">Message</button>
+      <button id="userCardFriendBtn" onclick="friendFromUserCard()">Add friend</button>
+      <button class="danger" id="userCardBlockBtn" onclick="toggleBlockFromUserCard()">Block</button>
+      <button class="secondary" id="userCardCloseBtn" onclick="closeUserCard()">Close</button>
+    </div>
+  </div>
 </div>
 
 <div class="toast-stack" id="toastStack"></div>
