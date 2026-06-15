@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Telegrom V2.8 Mobile</title>
+<title>Telegrom V2.1 Channels</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -366,13 +366,47 @@ button.mini{margin:0 0 0 6px;padding:5px 8px;font-size:11px;border-radius:8px;ba
   }
 }
 
+
+.channel-create{
+  width:100%;
+  margin:8px 0 12px;
+}
+.channel-item{
+  padding:11px;
+  background:var(--card);
+  border-radius:14px;
+  margin-bottom:10px;
+  cursor:pointer;
+  display:flex;
+  gap:10px;
+  align-items:center;
+}
+.channel-item:hover{background:var(--card-hover)}
+.channel-item.active{background:var(--active)}
+.channel-badge{
+  width:42px;
+  height:42px;
+  border-radius:50%;
+  background:linear-gradient(135deg,#38bdf8,#2563eb);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-weight:bold;
+  flex:0 0 42px;
+}
+.channel-owner{
+  color:var(--muted);
+  font-size:12px;
+  margin-top:3px;
+}
+
 </style>
 </head>
 
 <body>
 <div class="app">
   <div class="header">
-    <div>💬 Telegrom <span class="small">V2.8 MOBILE</span></div>
+    <div>💬 Telegrom <span class="small">V2.1 CHANNELS</span></div>
     <div>
       <span class="small" id="currentUserText"></span>
       <button class="secondary" id="notifyBtn" style="display:none" onclick="enableNotifications()">🔔</button>
@@ -395,11 +429,14 @@ button.mini{margin:0 0 0 6px;padding:5px 8px;font-size:11px;border-radius:8px;ba
     <div class="sidebar">
       <h3>Диалоги</h3>
       <button class="secondary group-create" onclick="createGroup()">👥 Создать группу</button>
+      <button class="secondary channel-create" onclick="createChannel()">📢 Создать канал</button>
       <input class="search" id="searchInput" placeholder="Поиск..." oninput="renderUsersFromCache()">
       <div class="section-title">Личные</div>
       <div id="usersList"></div>
       <div class="section-title">Группы</div>
       <div id="groupsList"></div>
+      <div class="section-title">Каналы</div>
+      <div id="channelsList"></div>
     </div>
 
     <div class="content">
@@ -483,6 +520,9 @@ let friend = localStorage.getItem("telegrom_friend");
 let currentChatType = localStorage.getItem("telegrom_chat_type") || "private";
 let currentGroupId = localStorage.getItem("telegrom_group_id") || null;
 let currentGroupName = localStorage.getItem("telegrom_group_name") || "";
+let currentChannelId = localStorage.getItem("telegrom_channel_id") || null;
+let currentChannelName = localStorage.getItem("telegrom_channel_name") || "";
+let currentChannelOwner = localStorage.getItem("telegrom_channel_owner") || "";
 
 let usersTimer = null;
 let messagesTimer = null;
@@ -496,6 +536,7 @@ let usersCache = [];
 let unreadCache = {};
 let lastMessagesCache = {};
 let groupsCache = [];
+let channelsCache = [];
 let knownMessageIds = new Set();
 let notificationsEnabled = false;
 let currentTheme = "dark";
@@ -776,6 +817,8 @@ async function startApp(){
     usersTimer = setInterval(async () => {
       await loadUsers();
       await loadGroups();
+      await loadChannels();
+  await loadChannels();
     }, 4000);
   }
 
@@ -783,7 +826,9 @@ async function startApp(){
     onlineTimer = setInterval(saveOrUpdateUser, 10000);
   }
 
-  if(currentChatType === "group" && currentGroupId){
+  if(currentChatType === "channel" && currentChannelId){
+    openChannel(currentChannelId, currentChannelName, currentChannelOwner);
+  }else if(currentChatType === "group" && currentGroupId){
     openGroupChat(currentGroupId, currentGroupName);
   }else if(friend){
     openChat(friend);
@@ -984,9 +1029,15 @@ async function openChat(selectedUser){
   currentChatType = "private";
   currentGroupId = null;
   currentGroupName = "";
+  currentChannelId = null;
+  currentChannelName = "";
+  currentChannelOwner = "";
   localStorage.setItem("telegrom_chat_type", "private");
   localStorage.removeItem("telegrom_group_id");
   localStorage.removeItem("telegrom_group_name");
+  localStorage.removeItem("telegrom_channel_id");
+  localStorage.removeItem("telegrom_channel_name");
+  localStorage.removeItem("telegrom_channel_owner");
 
   friend = selectedUser;
   localStorage.setItem("telegrom_friend", friend);
@@ -1349,6 +1400,11 @@ async function uploadVoiceMessage(blob){
 async function sendPrivateMessage(){
   if(currentChatType === "group"){
     await sendGroupMessage();
+    return;
+  }
+
+  if(currentChatType === "channel"){
+    await sendChannelPost();
     return;
   }
 
@@ -1987,10 +2043,16 @@ async function openGroupChat(groupId, groupName){
   currentChatType = "group";
   currentGroupId = groupId;
   currentGroupName = groupName;
+  currentChannelId = null;
+  currentChannelName = "";
+  currentChannelOwner = "";
 
   localStorage.setItem("telegrom_chat_type", "group");
   localStorage.setItem("telegrom_group_id", groupId);
   localStorage.setItem("telegrom_group_name", groupName);
+  localStorage.removeItem("telegrom_channel_id");
+  localStorage.removeItem("telegrom_channel_name");
+  localStorage.removeItem("telegrom_channel_owner");
 
   friend = null;
   localStorage.removeItem("telegrom_friend");
@@ -2092,6 +2154,206 @@ function renderGroupMessages(messages){
 
 function backToChats(){
   document.body.classList.remove("mobile-chat-open");
+}
+
+
+async function createChannel(){
+  const name = prompt("Название канала:");
+  if(!name || !name.trim()) return;
+
+  const { data, error } = await db
+    .from("telegram_channels")
+    .insert([{ name:name.trim(), owner:username }])
+    .select();
+
+  if(error){
+    alert("Ошибка создания канала: " + error.message);
+    console.error(error);
+    return;
+  }
+
+  const channel = data[0];
+
+  await loadChannels();
+  openChannel(channel.id, channel.name, channel.owner);
+}
+
+async function loadChannels(){
+  if(!username) return;
+
+  const { data, error } = await db
+    .from("telegram_channels")
+    .select("*")
+    .order("created_at", { ascending:false });
+
+  if(error){
+    console.error("Ошибка загрузки каналов:", error);
+    return;
+  }
+
+  channelsCache = data || [];
+  renderChannels();
+}
+
+function renderChannels(){
+  const list = document.getElementById("channelsList");
+  if(!list) return;
+
+  list.innerHTML = "";
+
+  if(channelsCache.length === 0){
+    list.innerHTML = '<div class="small">Каналов пока нет.</div>';
+    return;
+  }
+
+  channelsCache.forEach(channel => {
+    const div = document.createElement("div");
+    div.className = "channel-item";
+
+    if(currentChatType === "channel" && String(currentChannelId) === String(channel.id)){
+      div.classList.add("active");
+    }
+
+    const badge = document.createElement("div");
+    badge.className = "channel-badge";
+    badge.textContent = "📢";
+
+    const main = document.createElement("div");
+    main.className = "user-main";
+
+    const name = document.createElement("div");
+    name.className = "user-name";
+    name.textContent = channel.name;
+
+    const owner = document.createElement("div");
+    owner.className = "channel-owner";
+    owner.textContent = "Автор: " + (channel.owner || "unknown");
+
+    main.appendChild(name);
+    main.appendChild(owner);
+
+    div.appendChild(badge);
+    div.appendChild(main);
+
+    div.onclick = () => openChannel(channel.id, channel.name, channel.owner);
+    list.appendChild(div);
+  });
+}
+
+async function openChannel(channelId, channelName, channelOwner){
+  currentChatType = "channel";
+  currentChannelId = channelId;
+  currentChannelName = channelName;
+  currentChannelOwner = channelOwner || "";
+
+  currentGroupId = null;
+  currentGroupName = "";
+  friend = null;
+
+  localStorage.setItem("telegrom_chat_type", "channel");
+  localStorage.setItem("telegrom_channel_id", channelId);
+  localStorage.setItem("telegrom_channel_name", channelName);
+  localStorage.setItem("telegrom_channel_owner", currentChannelOwner);
+  localStorage.removeItem("telegrom_group_id");
+  localStorage.removeItem("telegrom_group_name");
+  localStorage.removeItem("telegrom_friend");
+
+  document.getElementById("chatTitle").textContent = "📢 Канал: " + channelName;
+  document.getElementById("typingStatus").textContent =
+    currentChannelOwner === username ? "Вы владелец канала" : "Только владелец может публиковать";
+
+  document.getElementById("sendBox").style.display = currentChannelOwner === username ? "flex" : "none";
+  document.body.classList.add("mobile-chat-open");
+
+  await loadChannels();
+  await loadChannelPosts();
+
+  if(messagesTimer){
+    clearInterval(messagesTimer);
+  }
+
+  messagesTimer = setInterval(async () => {
+    await loadChannelPosts();
+  }, 3000);
+}
+
+async function sendChannelPost(){
+  const input = document.getElementById("messageInput");
+  const text = input.value.trim();
+
+  if(!currentChannelId){
+    alert("Сначала выбери канал");
+    return;
+  }
+
+  if(currentChannelOwner !== username){
+    alert("Публиковать может только владелец канала");
+    return;
+  }
+
+  if(!text) return;
+
+  const { error } = await db
+    .from("telegram_channel_posts")
+    .insert([{
+      channel_id:Number(currentChannelId),
+      username:username,
+      message:text
+    }]);
+
+  if(error){
+    alert("Ошибка публикации: " + error.message);
+    console.error(error);
+    return;
+  }
+
+  input.value = "";
+  await loadChannelPosts();
+}
+
+async function loadChannelPosts(){
+  if(!currentChannelId) return;
+
+  const { data, error } = await db
+    .from("telegram_channel_posts")
+    .select("*")
+    .eq("channel_id", Number(currentChannelId))
+    .order("created_at", { ascending:true });
+
+  if(error){
+    console.error("Ошибка загрузки постов канала:", error);
+    return;
+  }
+
+  renderChannelPosts(data || []);
+}
+
+function renderChannelPosts(posts){
+  const chat = document.getElementById("chat");
+  chat.innerHTML = "";
+
+  if(!posts || posts.length === 0){
+    chat.innerHTML = '<div class="empty">В канале пока нет постов.</div>';
+    return;
+  }
+
+  posts.forEach(post => {
+    const div = document.createElement("div");
+    div.className = "msg";
+    if(post.username === username) div.classList.add("me");
+
+    div.innerHTML = `
+      <div class="name">📢 ${escapeHtml(post.username)}</div>
+      <div class="text">${escapeHtml(post.message)}</div>
+      <div class="time">
+        <span>${new Date(post.created_at).toLocaleString()}</span>
+      </div>
+    `;
+
+    chat.appendChild(div);
+  });
+
+  chat.scrollTop = chat.scrollHeight;
 }
 
 function handleEnter(event){
