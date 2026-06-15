@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Telegrom V2.1 Channels</title>
+<title>Telegrom V3.0 Voice Calls</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -400,13 +400,75 @@ button.mini{margin:0 0 0 6px;padding:5px 8px;font-size:11px;border-radius:8px;ba
   margin-top:3px;
 }
 
+
+.call-btn{
+  margin:0 0 0 auto;
+  padding:8px 12px;
+  border-radius:10px;
+  background:#22c55e;
+  color:white;
+}
+.call-modal{
+  position:fixed;
+  inset:0;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  background:rgba(0,0,0,.65);
+  z-index:2000;
+  padding:20px;
+}
+.call-box{
+  width:100%;
+  max-width:420px;
+  background:var(--panel);
+  border:1px solid var(--border);
+  border-radius:22px;
+  padding:24px;
+  text-align:center;
+  box-shadow:0 20px 70px rgba(0,0,0,.5);
+}
+.call-avatar{
+  width:82px;
+  height:82px;
+  border-radius:50%;
+  margin:0 auto 14px;
+  background:linear-gradient(135deg,#22c55e,#38bdf8);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:28px;
+  font-weight:bold;
+}
+.call-status{
+  color:var(--muted);
+  margin:8px 0 18px;
+}
+.call-actions{
+  display:flex;
+  gap:10px;
+  justify-content:center;
+  flex-wrap:wrap;
+}
+.call-actions button{
+  min-width:120px;
+}
+.call-end{
+  background:#ef4444!important;
+  color:white!important;
+}
+.call-accept{
+  background:#22c55e!important;
+  color:white!important;
+}
+
 </style>
 </head>
 
 <body>
 <div class="app">
   <div class="header">
-    <div>💬 Telegrom <span class="small">V2.1 CHANNELS</span></div>
+    <div>💬 Telegrom <span class="small">V3.0 CALLS</span></div>
     <div>
       <span class="small" id="currentUserText"></span>
       <button class="secondary" id="notifyBtn" style="display:none" onclick="enableNotifications()">🔔</button>
@@ -444,6 +506,7 @@ button.mini{margin:0 0 0 6px;padding:5px 8px;font-size:11px;border-radius:8px;ba
         <div class="chat-title-row">
           <button class="back-btn" onclick="backToChats()">←</button>
           <div id="chatTitle">Выбери пользователя слева</div>
+          <button class="call-btn" id="callBtn" style="display:none" onclick="startVoiceCall()">📞</button>
         </div>
         <div id="typingStatus" class="typing"></div>
       </div>
@@ -508,6 +571,23 @@ button.mini{margin:0 0 0 6px;padding:5px 8px;font-size:11px;border-radius:8px;ba
 </div>
 
 
+
+<div class="call-modal" id="callModal">
+  <div class="call-box">
+    <div class="call-avatar" id="callAvatar">📞</div>
+    <h2 id="callTitle">Звонок</h2>
+    <div class="call-status" id="callStatus">Подключение...</div>
+
+    <audio id="remoteAudio" autoplay playsinline></audio>
+
+    <div class="call-actions">
+      <button class="call-accept" id="acceptCallBtn" style="display:none" onclick="acceptIncomingCall()">Ответить</button>
+      <button class="call-end" onclick="endVoiceCall()">Завершить</button>
+    </div>
+  </div>
+</div>
+
+
 <script>
 const db = window.supabase.createClient(
   "https://xflrmkcashrosgmsyxeg.supabase.co",
@@ -523,6 +603,15 @@ let currentGroupName = localStorage.getItem("telegrom_group_name") || "";
 let currentChannelId = localStorage.getItem("telegrom_channel_id") || null;
 let currentChannelName = localStorage.getItem("telegrom_channel_name") || "";
 let currentChannelOwner = localStorage.getItem("telegrom_channel_owner") || "";
+
+let peerConnection = null;
+let localStream = null;
+let activeCallId = null;
+let incomingCallData = null;
+let callRole = null;
+let callPollTimer = null;
+let incomingPollTimer = null;
+let knownIce = new Set();
 
 let usersTimer = null;
 let messagesTimer = null;
@@ -826,6 +915,10 @@ async function startApp(){
     onlineTimer = setInterval(saveOrUpdateUser, 10000);
   }
 
+  if(!incomingPollTimer){
+    incomingPollTimer = setInterval(checkIncomingCalls, 2500);
+  }
+
   if(currentChatType === "channel" && currentChannelId){
     openChannel(currentChannelId, currentChannelName, currentChannelOwner);
   }else if(currentChatType === "group" && currentGroupId){
@@ -1045,6 +1138,7 @@ async function openChat(selectedUser){
   document.getElementById("chatTitle").textContent = "Личный чат: " + username + " ↔ " + friend;
   document.getElementById("typingStatus").textContent = "";
   document.getElementById("sendBox").style.display = "flex";
+  document.getElementById("callBtn").style.display = "inline-block";
   document.body.classList.add("mobile-chat-open");
 
   await markMessagesAsRead();
@@ -2060,6 +2154,7 @@ async function openGroupChat(groupId, groupName){
   document.getElementById("chatTitle").textContent = "👥 Группа: " + groupName;
   document.getElementById("typingStatus").textContent = "";
   document.getElementById("sendBox").style.display = "flex";
+  document.getElementById("callBtn").style.display = "none";
   document.body.classList.add("mobile-chat-open");
 
   await loadGroups();
@@ -2263,6 +2358,7 @@ async function openChannel(channelId, channelName, channelOwner){
     currentChannelOwner === username ? "Вы владелец канала" : "Только владелец может публиковать";
 
   document.getElementById("sendBox").style.display = currentChannelOwner === username ? "flex" : "none";
+  document.getElementById("callBtn").style.display = "none";
   document.body.classList.add("mobile-chat-open");
 
   await loadChannels();
@@ -2354,6 +2450,294 @@ function renderChannelPosts(posts){
   });
 
   chat.scrollTop = chat.scrollHeight;
+}
+
+
+function openCallModal(title, status, showAccept){
+  document.getElementById("callTitle").textContent = title;
+  document.getElementById("callStatus").textContent = status;
+  document.getElementById("acceptCallBtn").style.display = showAccept ? "inline-block" : "none";
+  document.getElementById("callAvatar").textContent = "📞";
+  document.getElementById("callModal").style.display = "flex";
+}
+
+function closeCallModal(){
+  document.getElementById("callModal").style.display = "none";
+  document.getElementById("acceptCallBtn").style.display = "none";
+  document.getElementById("remoteAudio").srcObject = null;
+}
+
+function createPeerConnection(){
+  const pc = new RTCPeerConnection({
+    iceServers:[
+      { urls:"stun:stun.l.google.com:19302" },
+      { urls:"stun:stun1.l.google.com:19302" }
+    ]
+  });
+
+  pc.ontrack = event => {
+    const audio = document.getElementById("remoteAudio");
+    audio.srcObject = event.streams[0];
+  };
+
+  pc.onconnectionstatechange = () => {
+    if(pc.connectionState === "connected"){
+      document.getElementById("callStatus").textContent = "Звонок идёт";
+    }
+
+    if(["failed","disconnected","closed"].includes(pc.connectionState)){
+      document.getElementById("callStatus").textContent = "Соединение завершено";
+    }
+  };
+
+  pc.onicecandidate = async event => {
+    if(!event.candidate || !activeCallId) return;
+
+    const column = callRole === "caller" ? "caller_ice" : "callee_ice";
+
+    const { data } = await db
+      .from("telegram_calls")
+      .select(column)
+      .eq("id", activeCallId)
+      .limit(1);
+
+    const oldList = data && data[0] && data[0][column] ? data[0][column] : [];
+    oldList.push(event.candidate.toJSON());
+
+    await db
+      .from("telegram_calls")
+      .update({ [column]: oldList })
+      .eq("id", activeCallId);
+  };
+
+  return pc;
+}
+
+async function getMicrophone(){
+  return await navigator.mediaDevices.getUserMedia({ audio:true, video:false });
+}
+
+async function startVoiceCall(){
+  if(!friend){
+    alert("Сначала выбери пользователя");
+    return;
+  }
+
+  try{
+    callRole = "caller";
+    knownIce = new Set();
+
+    openCallModal("Звонок: " + friend, "Звоним...", false);
+
+    localStream = await getMicrophone();
+    peerConnection = createPeerConnection();
+
+    localStream.getTracks().forEach(track => {
+      peerConnection.addTrack(track, localStream);
+    });
+
+    const offer = await peerConnection.createOffer();
+    await peerConnection.setLocalDescription(offer);
+
+    const { data, error } = await db
+      .from("telegram_calls")
+      .insert([{
+        from_user: username,
+        to_user: friend,
+        status: "ringing",
+        offer: offer,
+        caller_ice: [],
+        callee_ice: []
+      }])
+      .select();
+
+    if(error){
+      alert("Ошибка создания звонка: " + error.message);
+      console.error(error);
+      endVoiceCall(false);
+      return;
+    }
+
+    activeCallId = data[0].id;
+
+    if(callPollTimer) clearInterval(callPollTimer);
+    callPollTimer = setInterval(pollCallerCallState, 1500);
+
+  }catch(error){
+    alert("Ошибка звонка: " + error.message);
+    console.error(error);
+    endVoiceCall(false);
+  }
+}
+
+async function checkIncomingCalls(){
+  if(!username || activeCallId) return;
+
+  const { data, error } = await db
+    .from("telegram_calls")
+    .select("*")
+    .eq("to_user", username)
+    .eq("status", "ringing")
+    .order("created_at", { ascending:false })
+    .limit(1);
+
+  if(error){
+    console.error("Ошибка проверки входящих:", error);
+    return;
+  }
+
+  if(data && data.length > 0){
+    incomingCallData = data[0];
+    activeCallId = incomingCallData.id;
+    callRole = "callee";
+    openCallModal("Входящий звонок", "Звонит: " + incomingCallData.from_user, true);
+  }
+}
+
+async function acceptIncomingCall(){
+  if(!incomingCallData) return;
+
+  try{
+    callRole = "callee";
+    knownIce = new Set();
+
+    document.getElementById("acceptCallBtn").style.display = "none";
+    document.getElementById("callStatus").textContent = "Подключаемся...";
+
+    localStream = await getMicrophone();
+    peerConnection = createPeerConnection();
+
+    localStream.getTracks().forEach(track => {
+      peerConnection.addTrack(track, localStream);
+    });
+
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(incomingCallData.offer));
+
+    const answer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answer);
+
+    const { error } = await db
+      .from("telegram_calls")
+      .update({
+        status: "accepted",
+        answer: answer
+      })
+      .eq("id", activeCallId);
+
+    if(error){
+      alert("Ошибка ответа на звонок: " + error.message);
+      console.error(error);
+      endVoiceCall(false);
+      return;
+    }
+
+    if(callPollTimer) clearInterval(callPollTimer);
+    callPollTimer = setInterval(pollCalleeCallState, 1500);
+
+  }catch(error){
+    alert("Ошибка принятия звонка: " + error.message);
+    console.error(error);
+    endVoiceCall();
+  }
+}
+
+async function pollCallerCallState(){
+  if(!activeCallId || !peerConnection) return;
+
+  const { data, error } = await db
+    .from("telegram_calls")
+    .select("*")
+    .eq("id", activeCallId)
+    .limit(1);
+
+  if(error || !data || !data.length){
+    console.error(error);
+    return;
+  }
+
+  const call = data[0];
+
+  if(call.status === "ended"){
+    endVoiceCall(false);
+    return;
+  }
+
+  if(call.answer && !peerConnection.currentRemoteDescription){
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(call.answer));
+    document.getElementById("callStatus").textContent = "Соединяем...";
+  }
+
+  await addIceCandidates(call.callee_ice || []);
+}
+
+async function pollCalleeCallState(){
+  if(!activeCallId || !peerConnection) return;
+
+  const { data, error } = await db
+    .from("telegram_calls")
+    .select("*")
+    .eq("id", activeCallId)
+    .limit(1);
+
+  if(error || !data || !data.length){
+    console.error(error);
+    return;
+  }
+
+  const call = data[0];
+
+  if(call.status === "ended"){
+    endVoiceCall(false);
+    return;
+  }
+
+  await addIceCandidates(call.caller_ice || []);
+}
+
+async function addIceCandidates(candidates){
+  for(const candidate of candidates){
+    const key = JSON.stringify(candidate);
+
+    if(knownIce.has(key)) continue;
+    knownIce.add(key);
+
+    try{
+      await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+    }catch(error){
+      console.error("Ошибка ICE:", error);
+    }
+  }
+}
+
+async function endVoiceCall(updateDb = true){
+  if(updateDb && activeCallId){
+    await db
+      .from("telegram_calls")
+      .update({ status:"ended" })
+      .eq("id", activeCallId);
+  }
+
+  if(callPollTimer){
+    clearInterval(callPollTimer);
+    callPollTimer = null;
+  }
+
+  if(peerConnection){
+    peerConnection.close();
+    peerConnection = null;
+  }
+
+  if(localStream){
+    localStream.getTracks().forEach(track => track.stop());
+    localStream = null;
+  }
+
+  activeCallId = null;
+  incomingCallData = null;
+  callRole = null;
+  knownIce = new Set();
+
+  closeCallModal();
 }
 
 function handleEnter(event){
